@@ -189,6 +189,12 @@
   .qtxt b{color:var(--text)}
   .qtxt .ok{color:var(--green);font-weight:600}
   /* festejo */
+  .flash{position:absolute;inset:0;z-index:85;pointer-events:none;opacity:0;background:radial-gradient(circle at 50% 62%,rgba(255,236,150,.95) 0%,rgba(255,200,60,.55) 28%,rgba(255,170,0,0) 70%)}
+  .flash.go{animation:flash .9s ease-out}
+  @keyframes flash{0%{opacity:0}12%{opacity:1}100%{opacity:0}}
+  #fx{position:absolute;inset:0;z-index:86;pointer-events:none;width:100%;height:100%}
+  .ring{position:absolute;left:50%;top:62%;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;border:4px solid #F7B928;z-index:84;pointer-events:none;animation:ring .9s ease-out forwards}
+  @keyframes ring{from{transform:scale(.2);opacity:1}to{transform:scale(14);opacity:0}}
   .celebrate{position:absolute;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .25s}
   .celebrate.show{opacity:1;pointer-events:auto}
   .cel-card{background:var(--card);border-radius:20px;padding:26px 22px 20px;width:84%;max-width:330px;text-align:center;transform:scale(.7);transition:transform .45s cubic-bezier(.3,1.6,.5,1);position:relative;z-index:2}
@@ -348,6 +354,8 @@
 
   <div class="popwrap" id="popwrap" aria-live="polite"></div>
   <div class="celebrate" id="celebrate" onclick="if(event.target===this)closeCelebrate()"></div>
+  <div class="flash" id="flash"></div>
+  <canvas id="fx"></canvas>
   <div class="sheet-bg" id="sheet-bg" onclick="if(event.target===this)closeSheet()"><div class="sheet" id="sheet"></div></div>
   <div class="toast" id="toast"></div>
 </div>
@@ -357,6 +365,7 @@ const $ = id => document.getElementById(id);
 const CATS = ['Muebles','Electrónica','Deco','Ropa','Libros','Plantas','Bicis','Otros'];
 const API_URL = ((window.RESCATA_CONFIG||{}).API_URL || '').replace(/\/$/,'');
 const POLL_MS = 20000;
+const APP_VERSION = '__VERSION__';
 let filter='Todo', selCat='Muebles', photo=null, gps=null, myPos=null, nearMe=false;
 let posts=[], notif={interests:[],nearby:[]}, mode='loading', busy=false;
 
@@ -458,6 +467,21 @@ async function goDemo(msg){ mode='demo'; showBanner(msg); await refresh(); initP
 function showBanner(h){ $('banner').innerHTML=h; $('banner').classList.add('show'); }
 function hideBanner(){ $('banner').classList.remove('show'); }
 
+// Si hay una versión nueva publicada, recargamos solos (GitHub Pages guarda la vieja hasta 10 min)
+async function checkUpdate(){
+  try{
+    const r = await fetch('version.json?ts='+Date.now(), {cache:'no-store'});
+    if(!r.ok) return;
+    const { v } = await r.json();
+    if(v && APP_VERSION !== '__VER'+'SION__' && v !== APP_VERSION && !busy && !celActive){
+      if(ls.get('rescata_reloaded_for', '') === v) return;
+      ls.set('rescata_reloaded_for', v);
+      location.reload();
+    }
+  }catch(e){}
+}
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) checkUpdate(); });
+setInterval(()=>{ if(!document.hidden) checkUpdate(); }, 60000);
 async function refresh(silent){
   try{
     posts = await store().list();
@@ -734,9 +758,10 @@ async function doPublish(){
     const wasEffective = qualityParts(); const effective = wasEffective.photo && wasEffective.desc && wasEffective.loc;
     const before = myStats ? myStats.effective : null;
     posts.unshift(p); resetForm(); filter='Todo'; renderChips(); go('feed');
-    await loadStats();
-    const after = myStats ? myStats.effective : (before||0) + (effective?1:0);
-    celebratePublish(effective, before, after);
+    const after = (before||0) + (effective?1:0);
+    celebratePublish(effective, before==null?0:before, after);
+    if(myStats) myStats.effective = after;
+    loadStats();
   }catch(e){ toast('No se pudo publicar: '+e.message); }
   finally{ busy=false; $('pub-btn').textContent='Publicar y avisar'; check(); }
 }
@@ -955,7 +980,39 @@ function sfx(kind, n=1){
 function toggleSounds(){ ls.set('rescata_sounds', !soundsOn()); renderSoundSwitch(); if(soundsOn()) sfx('complete'); }
 function renderSoundSwitch(){ $('snd-switch').classList.toggle('on', soundsOn()); }
 
-// Festejos
+// Festejos: destello + confeti en canvas
+function confetti(opts={}){
+  const cv=$('fx'), app=$('app'), dpr=Math.min(2, window.devicePixelRatio||1);
+  const W=app.clientWidth, H=app.clientHeight; cv.width=W*dpr; cv.height=H*dpr;
+  const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
+  const colors=['#F7B928','#FFD54F','#1877F2','#45BD62','#F5533D','#FF8AD8','#ffffff'];
+  const ox=W/2, oy=H*(opts.y||.62), N=opts.n||140, parts=[];
+  for(let i=0;i<N;i++){
+    const a = -Math.PI/2 + (Math.random()-.5)*Math.PI*1.5, v = 7+Math.random()*10;
+    parts.push({x:ox,y:oy,vx:Math.cos(a)*v,vy:Math.sin(a)*v-3,s:5+Math.random()*7,rot:Math.random()*6,vr:(Math.random()-.5)*.4,
+      c:colors[i%colors.length], star:Math.random()<.45, life:0, max:70+Math.random()*50});
+  }
+  const star=(x,y,r)=>{ ctx.beginPath(); for(let k=0;k<10;k++){ const rr=k%2?r*.45:r, an=k*Math.PI/5-Math.PI/2; ctx.lineTo(x+Math.cos(an)*rr,y+Math.sin(an)*rr);} ctx.closePath(); ctx.fill(); };
+  cancelAnimationFrame(cv._raf);
+  const tick=()=>{
+    ctx.clearRect(0,0,W,H); let alive=0;
+    for(const p of parts){
+      if(p.life>p.max) continue; alive++; p.life++;
+      p.vy+=.32; p.vx*=.985; p.vy*=.985; p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr;
+      ctx.save(); ctx.globalAlpha=Math.max(0,1-p.life/p.max); ctx.fillStyle=p.c; ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      if(p.star) star(0,0,p.s); else ctx.fillRect(-p.s/2,-p.s/3,p.s,p.s*.6);
+      ctx.restore();
+    }
+    if(alive) cv._raf=requestAnimationFrame(tick); else ctx.clearRect(0,0,W,H);
+  };
+  tick();
+}
+function burst(big){
+  const f=$('flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+  const r=document.createElement('div'); r.className='ring'; $('app').appendChild(r); setTimeout(()=>r.remove(),1000);
+  confetti({n: big?220:150});
+  if(big) setTimeout(()=>confetti({n:120, y:.45}), 450);
+}
 function sparks(n=22){
   const c=$('celebrate'), icons=['⭐','✨','🌟','⭐','💫'];
   for(let i=0;i<n;i++){ const s=document.createElement('span'); s.className='spark'; s.textContent=icons[i%icons.length];
@@ -964,15 +1021,17 @@ function sparks(n=22){
     s.style.setProperty('--r', (Math.random()*360-180)+'deg'); s.style.animationDelay=(Math.random()*.25)+'s';
     c.appendChild(s); setTimeout(()=>s.remove(), 1700); }
 }
-let celQueue = [];
+let celQueue = [], celActive = false;
 function celebrate(html, sound){
   celQueue.push({html, sound});
-  if(!$('celebrate').classList.contains('show')) nextCelebrate();
+  if(!celActive) nextCelebrate();
 }
 function nextCelebrate(){
-  const it = celQueue.shift(); if(!it) return;
+  const it = celQueue.shift(); if(!it){ celActive=false; return; }
+  celActive = true;
   const c=$('celebrate'); c.innerHTML=`<div class="cel-card">${it.html}<button class="big-btn" onclick="closeCelebrate()">¡Genial!</button></div>`;
-  c.classList.add('show'); sparks(it.sound==='rankup'?34:22); sfx(it.sound);
+  burst(it.sound==='rankup'); sfx(it.sound);
+  setTimeout(()=>{ c.classList.add('show'); sparks(it.sound==='rankup'?34:20); }, 220);
 }
 function closeCelebrate(){ const c=$('celebrate'); c.classList.remove('show'); setTimeout(()=>{ c.innerHTML=''; nextCelebrate(); }, 260); }
 function celebratePublish(effective, before, after){
@@ -1023,6 +1082,7 @@ async function renderProfile(){
     `<div class="empty" style="grid-column:1/-1">Todavía no publicaste nada.<br><button class="big-btn" style="margin-top:14px;width:auto;padding:10px 20px" onclick="go('publish')">Publicar mi primer hallazgo</button></div>`;
 }
 
+checkUpdate();
 boot();
 </script>
 </body>

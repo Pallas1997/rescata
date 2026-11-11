@@ -20,6 +20,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Marcar versión (para que los celulares se actualicen solos)
+        run: |
+          V="${GITHUB_SHA::7}"
+          sed -i "s/__VERSION__/$V/" frontend/index.html
+          printf '{"v":"%s"}' "$V" > frontend/version.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
