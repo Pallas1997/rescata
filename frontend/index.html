@@ -177,6 +177,47 @@
   .pop .x{width:28px;height:28px;border-radius:50%;background:var(--chip);flex:none;display:grid;place-items:center;font-size:13px;color:var(--muted)}
   .pop .timer{position:absolute;left:0;bottom:0;height:3px;background:var(--blue);width:100%;transform-origin:left;animation:popt 7s linear forwards}
   @keyframes popt{to{transform:scaleX(0)}}
+  /* estrellas de calidad al publicar */
+  .quality{background:var(--card);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px}
+  .qstars{display:flex;gap:2px;line-height:0}
+  .qstar{display:inline-block;width:28px;height:28px}
+  .qstar svg{width:100%;height:100%;fill:var(--chip);stroke:var(--field-line);stroke-width:1;transition:fill .2s}
+  .qstar.on svg{fill:#F7B928;stroke:#E09E00}
+  .qstar.qpop{animation:starpop .5s cubic-bezier(.3,1.8,.5,1)}
+  @keyframes starpop{0%{transform:scale(.4) rotate(-30deg)}60%{transform:scale(1.35) rotate(8deg)}100%{transform:scale(1)}}
+  .qtxt{font-size:13px;line-height:1.45;color:var(--muted);flex:1}
+  .qtxt b{color:var(--text)}
+  .qtxt .ok{color:var(--green);font-weight:600}
+  /* festejo */
+  .celebrate{position:absolute;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .25s}
+  .celebrate.show{opacity:1;pointer-events:auto}
+  .cel-card{background:var(--card);border-radius:20px;padding:26px 22px 20px;width:84%;max-width:330px;text-align:center;transform:scale(.7);transition:transform .45s cubic-bezier(.3,1.6,.5,1);position:relative;z-index:2}
+  .celebrate.show .cel-card{transform:scale(1)}
+  .cel-medal{font-size:68px;line-height:1;margin-bottom:8px;animation:medal 1.2s ease-in-out infinite alternate}
+  @keyframes medal{from{transform:translateY(0) rotate(-6deg)}to{transform:translateY(-6px) rotate(6deg)}}
+  .cel-card h3{font-size:21px;margin-bottom:6px}
+  .cel-card p{font-size:14px;color:var(--muted);line-height:1.45}
+  .cel-stars{font-size:30px;margin:6px 0 4px;letter-spacing:4px}
+  .cel-stars span{display:inline-block;opacity:0;animation:starin .45s cubic-bezier(.3,1.8,.5,1) forwards}
+  @keyframes starin{from{opacity:0;transform:scale(.2) rotate(-60deg)}to{opacity:1;transform:scale(1)}}
+  .cel-card .big-btn{margin-top:16px}
+  .spark{position:absolute;top:50%;left:50%;font-size:22px;pointer-events:none;z-index:1;animation:spark 1.3s ease-out forwards}
+  @keyframes spark{0%{transform:translate(-50%,-50%) scale(.3);opacity:1}100%{transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(1) rotate(var(--r));opacity:0}}
+  /* rango en perfil */
+  .rank-card{margin:12px;background:var(--card);border-radius:12px;padding:16px}
+  .rank-top{display:flex;align-items:center;gap:12px}
+  .rank-medal{font-size:44px;line-height:1}
+  .rank-top h3{font-size:18px}
+  .rank-top small{color:var(--muted);font-size:13px}
+  .rank-bar{height:10px;border-radius:5px;background:var(--chip);overflow:hidden;margin:14px 0 6px}
+  .rank-bar div{height:100%;border-radius:5px;background:linear-gradient(90deg,#F7B928,#F5533D);transition:width .8s ease}
+  .rank-next{font-size:13px;color:var(--muted)}
+  .rank-steps{display:flex;justify-content:space-between;margin-top:14px;gap:6px}
+  .rank-steps div{flex:1;text-align:center;font-size:12px;color:var(--muted);padding:8px 2px;border-radius:8px;background:var(--bg)}
+  .rank-steps div.done{color:var(--text);font-weight:600;background:var(--chip-on)}
+  .rank-steps div b{display:block;font-size:22px;margin-bottom:2px;filter:grayscale(1);opacity:.5}
+  .rank-steps div.done b{filter:none;opacity:1}
+  .rank-tag{display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:600;color:var(--muted);background:var(--chip);border-radius:10px;padding:1px 7px;margin-left:6px;vertical-align:1px}
   .toast{position:absolute;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);background:#323436;color:#fff;padding:12px 18px;border-radius:10px;font-size:14px;opacity:0;transition:.25s;z-index:60;pointer-events:none;max-width:90%;text-align:center}
   .toast.show{opacity:1;transform:translateX(-50%)}
   .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:rot .8s linear infinite;vertical-align:-2px;margin-right:6px}
@@ -255,6 +296,10 @@
         <p class="hint">Poné una referencia aproximada, no hace falta la dirección exacta de una casa.</p>
       </div>
 
+      <div class="quality" id="quality">
+        <div class="qstars"><span class="qstar" id="qs0"><svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z"/></svg></span><span class="qstar" id="qs1"><svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z"/></svg></span><span class="qstar" id="qs2"><svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z"/></svg></span></div>
+        <div class="qtxt" id="qtxt"></div>
+      </div>
       <button class="big-btn" id="pub-btn" onclick="publish()" disabled>Publicar y avisar</button>
       <p class="hint" style="text-align:center;margin-bottom:10px">Se le avisa a la gente que tenga la app cerca de esa zona.</p>
     </div>
@@ -272,15 +317,18 @@
     <div class="profile-head">
       <div class="avatar" id="p-avatar">V</div>
       <h2 id="p-name">Vos</h2>
-      <div class="d-meta">Rescatista</div>
+      <div class="d-meta" id="p-rank">🌱 Novato</div>
       <div class="stats">
-        <div><b id="st-pub">0</b><span>Publicados</span></div>
-        <div><b id="st-res">0</b><span>Rescatados</span></div>
+        <div><b id="st-eff">0</b><span>Efectivas</span></div>
+        <div><b id="st-int">0</b><span>Interesados</span></div>
+        <div><b id="st-res">0</b><span>Fui a buscar</span></div>
       </div>
     </div>
+    <div class="rank-card" id="rank-card"></div>
     <div class="settings">
       <button class="set-row" onclick="askName()"><span>Tu nombre</span><small id="set-name">—</small></button>
       <button class="set-row" onclick="toggleTheme()"><span>Modo oscuro</span><span class="switch" id="theme-switch"></span></button>
+      <button class="set-row" onclick="toggleSounds()"><span>Sonidos<br><small>Al ganar estrellas y publicar</small></span><span class="switch" id="snd-switch"></span></button>
       <button class="set-row" onclick="togglePops()"><span>Avisos emergentes<br><small>Cartel arriba cuando usás la app</small></span><span class="switch" id="pops-switch"></span></button>
       <button class="set-row" onclick="pushOn?disablePush():enablePush()"><span>Notificaciones<br><small id="push-sub">Avisarme cuando alguien publica</small></span><span class="switch" id="push-switch"></span></button>
       <div class="set-row"><span>Servidor</span><small id="set-server">—</small></div>
@@ -299,6 +347,7 @@
   </nav>
 
   <div class="popwrap" id="popwrap" aria-live="polite"></div>
+  <div class="celebrate" id="celebrate" onclick="if(event.target===this)closeCelebrate()"></div>
   <div class="sheet-bg" id="sheet-bg" onclick="if(event.target===this)closeSheet()"><div class="sheet" id="sheet"></div></div>
   <div class="toast" id="toast"></div>
 </div>
@@ -377,6 +426,7 @@ const local = {
   async mine(){ return this._all().filter(p=>p.mine).map(p=>({...p})); },
   async create(p){ const n={...p,id:'p'+Date.now(),img:p.image,t:Date.now(),interest:0,mine:true,user:NAME||'Vos',
       gps:(p.lat!=null?{lat:p.lat,lng:p.lng}:null), street:p.street||(p.lat!=null?'Ubicación por GPS':'')};
+    n.author_effective = this._all().filter(x=>x.mine&&(x.desc||'').trim().length>=MIN_DESC).length + ((p.desc||'').trim().length>=MIN_DESC?1:0);
     delete n.image; this._all().unshift(n); this._save(); return n; },
   async interest(id){ const p=this._all().find(x=>x.id===id); if(!p.going){p.going=true;p.interest=(p.interest||0)+1;} this._save(); return {...p}; },
   async gone(id,g){ const p=this._all().find(x=>x.id===id); p.gone=g; this._save(); return {...p}; },
@@ -389,14 +439,14 @@ const store = () => mode==='online' ? remote : local;
 
 /* ---------- arranque ---------- */
 async function boot(){
-  renderChips(); setPhotoBox(); applyThemeUI(); renderSkeleton(); updateProfileHead(); renderPopsSwitch();
+  renderChips(); setPhotoBox(); applyThemeUI(); renderSkeleton(); updateProfileHead(); renderPopsSwitch(); renderSoundSwitch(); renderRankCard(); check();
   if(!API_URL){ goDemo('No hay servidor configurado: estás en <b>modo demo</b>, lo que publiques queda solo en este celular.'); return; }
   showBanner('<span class="spin"></span>Conectando con el servidor… la primera vez del día puede tardar hasta un minuto.');
   try{
     await api('/api/health', {}, 75000);
     mode='online'; hideBanner();
     await refresh();
-    initPush();
+    initPush(); loadStats();
     if(new URLSearchParams(location.search).get('p')){ await openFromUrl(location.href); history.replaceState(null,'',location.pathname); }
     setInterval(()=>{ if(!document.hidden) refresh(true); }, POLL_MS);
     document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refresh(true); });
@@ -593,7 +643,7 @@ function openDetail(id, fresh){
           <path d="M200 50c-10 0-17 7-17 16 0 13 17 30 17 30s17-17 17-30c0-9-7-16-17-16z" fill="#1877F2"/><circle cx="200" cy="66" r="6" fill="#fff"/></svg></div>`}
         <p style="margin-top:10px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQ)}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600;text-decoration:none">Cómo llegar en Google Maps →</a></p>
       </div>
-      <div class="d-sec"><div class="user"><div class="avatar">${esc((p.mine?(NAME||'V'):(p.user||'A'))[0].toUpperCase())}</div><div><b>${p.mine?'Vos':esc(p.user)}</b><div class="d-meta">Avisó este hallazgo</div></div></div></div>
+      <div class="d-sec"><div class="user"><div class="avatar">${esc((p.mine?(NAME||'V'):(p.user||'A'))[0].toUpperCase())}</div><div><b>${p.mine?'Vos':esc(p.user)}</b>${rankTag(p.author_effective)}<div class="d-meta">Avisó este hallazgo${p.author_effective?` · ${p.author_effective} publicaci${p.author_effective===1?'ón efectiva':'ones efectivas'}`:''}</div></div></div></div>
       <div class="link-row">${p.mine ? `<button class="danger" onclick="doRemove('${p.id}')">Borrar publicación</button>` : `<button onclick="doReport('${p.id}')">⚑ Denunciar</button>`}</div>
     </div>`;
   if(!fresh) $('detail').scrollTop = 0;
@@ -655,9 +705,25 @@ async function useGPS(){
     st.innerHTML=`<p class="hint" style="margin:0 0 10px;color:var(--red)">${gpsError(e)}</p>`; $('f-street').focus();
   }
 }
+let starsPrev = [false,false,false];
+function qualityParts(){
+  const dlen = $('f-desc').value.trim().length;
+  return { photo: !!photo, desc: dlen >= MIN_DESC, loc: !!(gps || $('f-street').value.trim() || $('f-hood').value.trim()), dlen };
+}
 function check(){
   const ok = photo && $('f-title').value.trim() && (gps || $('f-street').value.trim() || $('f-hood').value.trim());
   $('pub-btn').disabled = !ok || busy; $('pub-top').disabled = !ok || busy;
+  const q = qualityParts(), st = [q.photo, q.desc, q.loc];
+  let gained = false;
+  st.forEach((on,i)=>{ const el=$('qs'+i); el.classList.toggle('on', on);
+    if(on && !starsPrev[i]){ gained = true; el.classList.remove('qpop'); void el.offsetWidth; el.classList.add('qpop'); } });
+  if(gained) sfx(st.filter(Boolean).length===3 ? 'complete' : 'star', st.filter(Boolean).length);
+  starsPrev = st;
+  const n = st.filter(Boolean).length;
+  const item = (on, txt) => on ? `<span class="ok">✓ ${txt}</span>` : txt;
+  $('qtxt').innerHTML = n===3
+    ? `<b>¡Publicación completa!</b><br>Esta suma para tu rango.`
+    : `<b>${n}/3 estrellas</b> · ${item(q.photo,'Foto')} · ${item(q.desc, q.desc?'Descripción':`Descripción (${q.dlen}/${MIN_DESC})`)} · ${item(q.loc,'Ubicación')}<br>Con las 3, suma para tu rango.`;
 }
 function publish(){ if(!$('pub-btn').disabled) needName(doPublish); }
 async function doPublish(){
@@ -665,8 +731,12 @@ async function doPublish(){
   try{
     const p = await store().create({ title:$('f-title').value.trim(), desc:$('f-desc').value.trim(), cat:selCat,
       street:$('f-street').value.trim(), hood:$('f-hood').value.trim(), lat:gps?gps.lat:null, lng:gps?gps.lng:null, image:photo });
+    const wasEffective = qualityParts(); const effective = wasEffective.photo && wasEffective.desc && wasEffective.loc;
+    const before = myStats ? myStats.effective : null;
     posts.unshift(p); resetForm(); filter='Todo'; renderChips(); go('feed');
-    toast(mode==='online' ? '¡Publicado! Ya lo ve la gente cerca 📣' : 'Publicado en modo demo (solo en este celular)');
+    await loadStats();
+    const after = myStats ? myStats.effective : (before||0) + (effective?1:0);
+    celebratePublish(effective, before, after);
   }catch(e){ toast('No se pudo publicar: '+e.message); }
   finally{ busy=false; $('pub-btn').textContent='Publicar y avisar'; check(); }
 }
@@ -840,6 +910,100 @@ function renderAlerts(){
 }
 function openFromNotif(id){ go('feed'); openDetail(id); }
 
+/* ---------- logros: rangos, estrellas, sonidos ---------- */
+const MIN_DESC = 20;
+const RANKS = [
+  { min:0,  name:'Novato', medal:'🌱', color:'#8a8d91' },
+  { min:1,  name:'Bronce', medal:'🥉', color:'#CD7F32' },
+  { min:5,  name:'Plata',  medal:'🥈', color:'#A8A9AD' },
+  { min:15, name:'Oro',    medal:'🥇', color:'#F7B928' },
+];
+const rankOf = n => RANKS.reduce((r,x)=> n>=x.min ? x : r, RANKS[0]);
+const nextRank = n => RANKS.find(x=>x.min>n) || null;
+const rankTag = n => { if(n==null) return ''; const r=rankOf(n); return `<span class="rank-tag">${r.medal} ${r.name}</span>`; };
+let myStats = null;
+async function loadStats(){
+  try{
+    if(mode==='online') myStats = await api('/api/me/stats');
+    else { const m = posts.filter(p=>p.mine); myStats = { effective: m.filter(p=>(p.desc||'').trim().length>=MIN_DESC).length, total:m.length,
+      interested: m.reduce((a,p)=>a+(p.interest||0),0), going: posts.filter(p=>p.going).length }; }
+  }catch(e){}
+  return myStats;
+}
+
+// Sonidos generados en el momento (sin archivos)
+let actx = null;
+const soundsOn = () => ls.get('rescata_sounds', true);
+function audio(){ if(!actx){ try{ actx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; } } if(actx.state==='suspended') actx.resume(); return actx; }
+['touchend','click'].forEach(ev=>document.addEventListener(ev, ()=>{ if(soundsOn()) audio(); }, {once:true, passive:true}));
+function tone(freq, start, dur, type='sine', vol=.18){
+  const a=audio(); if(!a) return; const t=a.currentTime+start;
+  const o=a.createOscillator(), g=a.createGain(); o.type=type; o.frequency.setValueAtTime(freq,t);
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+.012); g.gain.exponentialRampToValueAtTime(.0008,t+dur);
+  o.connect(g).connect(a.destination); o.start(t); o.stop(t+dur+.05);
+}
+function sfx(kind, n=1){
+  if(!soundsOn()) return;
+  try{
+    if(kind==='star'){ const f=[880,1046.5,1318.5][Math.max(0,n-1)]||1046.5; tone(f,0,.18,'triangle',.16); tone(f*2,.04,.12,'sine',.05); }
+    if(kind==='complete'){ [1046.5,1318.5,1568].forEach((f,i)=>tone(f,i*.07,.28,'triangle',.15)); }
+    if(kind==='publish'){ [523.25,659.25,783.99,1046.5].forEach((f,i)=>tone(f,i*.09,.35,'triangle',.17)); tone(2093,.38,.4,'sine',.06); }
+    if(kind==='rankup'){ [392,523.25,659.25,783.99,1046.5].forEach((f,i)=>tone(f,i*.11,.45,'square',.07)); [1046.5,1318.5,1568].forEach(f=>tone(f,.6,.9,'triangle',.1)); }
+    if(navigator.vibrate) navigator.vibrate(kind==='rankup'?[40,60,40,60,120]:kind==='publish'?[30,40,60]:15);
+  }catch(e){}
+}
+function toggleSounds(){ ls.set('rescata_sounds', !soundsOn()); renderSoundSwitch(); if(soundsOn()) sfx('complete'); }
+function renderSoundSwitch(){ $('snd-switch').classList.toggle('on', soundsOn()); }
+
+// Festejos
+function sparks(n=22){
+  const c=$('celebrate'), icons=['⭐','✨','🌟','⭐','💫'];
+  for(let i=0;i<n;i++){ const s=document.createElement('span'); s.className='spark'; s.textContent=icons[i%icons.length];
+    const ang=Math.random()*Math.PI*2, dist=120+Math.random()*160;
+    s.style.setProperty('--dx', Math.cos(ang)*dist+'px'); s.style.setProperty('--dy', Math.sin(ang)*dist+'px');
+    s.style.setProperty('--r', (Math.random()*360-180)+'deg'); s.style.animationDelay=(Math.random()*.25)+'s';
+    c.appendChild(s); setTimeout(()=>s.remove(), 1700); }
+}
+let celQueue = [];
+function celebrate(html, sound){
+  celQueue.push({html, sound});
+  if(!$('celebrate').classList.contains('show')) nextCelebrate();
+}
+function nextCelebrate(){
+  const it = celQueue.shift(); if(!it) return;
+  const c=$('celebrate'); c.innerHTML=`<div class="cel-card">${it.html}<button class="big-btn" onclick="closeCelebrate()">¡Genial!</button></div>`;
+  c.classList.add('show'); sparks(it.sound==='rankup'?34:22); sfx(it.sound);
+}
+function closeCelebrate(){ const c=$('celebrate'); c.classList.remove('show'); setTimeout(()=>{ c.innerHTML=''; nextCelebrate(); }, 260); }
+function celebratePublish(effective, before, after){
+  const stars = n => Array.from({length:3},(_,i)=>`<span style="animation-delay:${.15+i*.18}s">${i<n?'⭐':'☆'}</span>`).join('');
+  const nr = nextRank(after);
+  const progress = nr ? `Te ${nr.min-after===1?'falta 1 publicación efectiva':`faltan ${nr.min-after} publicaciones efectivas`} para ${nr.medal} ${nr.name}.` : '¡Llegaste al rango más alto! 🏆';
+  if(effective){
+    celebrate(`<div class="cel-medal">🎉</div><h3>¡Publicado!</h3><div class="cel-stars">${stars(3)}</div>
+      <p><b>+1 publicación efectiva</b>. ${mode==='online'?'Ya le avisamos a la gente.':''}<br>${progress}</p>`, 'publish');
+  } else {
+    celebrate(`<div class="cel-medal">📣</div><h3>¡Publicado!</h3><div class="cel-stars">${stars(2)}</div>
+      <p>Ya está visible, pero <b>no suma para tu rango</b>: la próxima agregá una descripción de ${MIN_DESC}+ caracteres para ganar las 3 estrellas.</p>`, 'publish');
+  }
+  if(before!=null && rankOf(after).min > rankOf(before).min){
+    const r = rankOf(after);
+    celebrate(`<div class="cel-medal">${r.medal}</div><h3>¡Subiste a ${r.name}!</h3>
+      <p>Ya tenés <b>${after}</b> publicaci${after===1?'ón efectiva':'ones efectivas'}. Tu medalla ahora aparece al lado de tu nombre en todo lo que publiques.</p>`, 'rankup');
+  }
+}
+function renderRankCard(){
+  const n = myStats ? myStats.effective : 0, r = rankOf(n), nr = nextRank(n);
+  const pct = nr ? Math.max(4, Math.round(100*n/nr.min)) : 100;
+  $('p-rank').innerHTML = `${r.medal} ${r.name}`;
+  $('rank-card').innerHTML = `
+    <div class="rank-top"><div class="rank-medal">${r.medal}</div><div><h3>Rango ${r.name}</h3><small>${n} publicaci${n===1?'ón efectiva':'ones efectivas'}</small></div></div>
+    <div class="rank-bar"><div style="width:${pct}%"></div></div>
+    <div class="rank-next">${nr ? `${nr.min-n} más para ${nr.medal} ${nr.name}` : '¡Rango máximo alcanzado! 🏆'}</div>
+    <div class="rank-steps">${RANKS.map(x=>`<div class="${n>=x.min?'done':''}"><b>${x.medal}</b>${x.name}<br>${x.min}</div>`).join('')}</div>
+    <p class="hint" style="margin-top:12px">Una publicación es <b>efectiva</b> cuando tiene las 3 estrellas (foto, descripción de ${MIN_DESC}+ caracteres y ubicación) y no fue denunciada.</p>`;
+}
+
 /* ---------- perfil ---------- */
 function updateProfileHead(){
   $('p-name').textContent = NAME || 'Vos'; $('p-avatar').textContent = (NAME||'V')[0].toUpperCase();
@@ -850,8 +1014,11 @@ async function renderProfile(){
   updateProfileHead();
   let mine = posts.filter(p=>p.mine);
   try{ mine = await store().mine(); mine.forEach(patch); }catch(e){}
-  $('st-pub').textContent = mine.length;
-  $('st-res').textContent = posts.filter(p=>p.going).length;
+  await loadStats();
+  $('st-eff').textContent = myStats ? myStats.effective : 0;
+  $('st-int').textContent = myStats ? myStats.interested : 0;
+  $('st-res').textContent = myStats ? myStats.going : posts.filter(p=>p.going).length;
+  renderRankCard();
   $('my-grid').innerHTML = mine.length ? mine.map(card).join('') :
     `<div class="empty" style="grid-column:1/-1">Todavía no publicaste nada.<br><button class="big-btn" style="margin-top:14px;width:auto;padding:10px 20px" onclick="go('publish')">Publicar mi primer hallazgo</button></div>`;
 }

@@ -11,6 +11,10 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '*').split(',').map(s =>
 const MAX_BODY = 3 * 1024 * 1024;        // 3 MB por request
 const MAX_IMAGE = 1.5 * 1024 * 1024;     // 1.5 MB por foto (el front ya la achica)
 const REPORTS_TO_HIDE = 3;               // denuncias para ocultar una publicación
+// Publicación "efectiva" (cuenta para el rango): no ocultada por denuncias y con descripción de 20+ caracteres.
+// La foto y la ubicación ya son obligatorias para publicar.
+const MIN_DESC_EFFECTIVE = 20;
+const EFFECTIVE_SQL = `NOT q.hidden AND char_length(q.description) >= ${MIN_DESC_EFFECTIVE}`;
 const CATEGORIES = ['Muebles', 'Electrónica', 'Deco', 'Ropa', 'Libros', 'Plantas', 'Bicis', 'Otros'];
 
 if (!process.env.DATABASE_URL) {
@@ -117,6 +121,7 @@ function shape(row, base) {
     mine: !!row.mine,
     going: !!row.going,
     distance_km: row.distance_km == null ? null : Math.round(row.distance_km * 10) / 10,
+    author_effective: row.author_effective || 0,
     t: new Date(row.created_at).getTime(),
   };
 }
@@ -126,7 +131,8 @@ const COLS = `
   p.id, p.title, p.description, p.category, p.street, p.hood, p.lat, p.lng,
   p.author_name, p.interest_count, p.gone, p.created_at,
   (p.author_id = $1) AS mine,
-  EXISTS (SELECT 1 FROM interests i WHERE i.post_id = p.id AND i.device_id = $1) AS going`;
+  EXISTS (SELECT 1 FROM interests i WHERE i.post_id = p.id AND i.device_id = $1) AS going,
+  (SELECT count(*) FROM posts q WHERE q.author_id = p.author_id AND ${EFFECTIVE_SQL})::int AS author_effective`;
 
 const DIST = `
   CASE WHEN $2::float8 IS NULL OR $3::float8 IS NULL OR p.lat IS NULL OR p.lng IS NULL THEN NULL
@@ -301,6 +307,21 @@ async function notifications(req, res, url) {
     nearby: near.map(r => shape(r, base)),
     now: Date.now(),
   });
+}
+
+// ---------- logros: mis estadísticas para el rango ----------
+async function myStats(req, res) {
+  const dev = deviceOf(req);
+  const { rows } = await pool.query(
+    `SELECT
+       count(*) FILTER (WHERE ${EFFECTIVE_SQL})::int AS effective,
+       count(*) FILTER (WHERE NOT q.hidden)::int AS total,
+       coalesce(sum(q.interest_count) FILTER (WHERE NOT q.hidden), 0)::int AS interested
+     FROM posts q WHERE q.author_id = $1`,
+    [dev.id]
+  );
+  const going = await pool.query('SELECT count(*)::int AS n FROM interests WHERE device_id = $1', [dev.id]);
+  send(req, res, 200, { ...rows[0], going: going.rows[0].n, min_desc: MIN_DESC_EFFECTIVE });
 }
 
 // ---------- notificaciones push ----------
@@ -479,6 +500,7 @@ async function handle(req, res) {
   if (parts[0] !== 'api') throw new HttpError(404, 'Ruta no encontrada.');
 
   if (parts[1] === 'notifications' && req.method === 'GET' && parts.length === 2) return notifications(req, res, url);
+  if (parts[1] === 'me' && parts[2] === 'stats' && req.method === 'GET') return myStats(req, res);
   if (parts[1] === 'geocode' && parts[2] === 'reverse' && req.method === 'GET') return reverseGeocode(req, res, url);
   if (parts[1] === 'push') {
     if (parts[2] === 'key' && req.method === 'GET') return pushKey(req, res);
