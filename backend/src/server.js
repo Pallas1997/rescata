@@ -4,6 +4,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('pg');
+const webpush = require('web-push');
 
 const PORT = process.env.PORT || 3000;
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '*').split(',').map(s => s.trim()).filter(Boolean);
@@ -207,7 +208,11 @@ async function createPost(req, res) {
      street || (hasGps ? 'Ubicación por GPS' : ''), hood,
      hasGps ? lat : null, hasGps ? lng : null, img.buf, img.type, dev.id, dev.name]
   );
-  return getPost(req, res, rows[0].id);
+  await getPost(req, res, rows[0].id);
+  // Notificación a todos, sin hacer esperar a quien publica
+  pool.query(`SELECT ${COLS}, NULL::float8 AS distance_km FROM posts p WHERE p.id = $2`, [dev.id, rows[0].id])
+    .then(r => r.rows[0] && notifyNewPost(shape(r.rows[0], publicBase(req)), dev.id))
+    .catch(e => console.error('push fallo', e.message));
 }
 
 async function addInterest(req, res, id) {
@@ -296,6 +301,143 @@ async function notifications(req, res, url) {
   });
 }
 
+// ---------- notificaciones push ----------
+// Las claves VAPID se generan solas la primera vez y quedan guardadas en la base.
+let vapidPublic = null;
+async function setupPush() {
+  let pub = process.env.VAPID_PUBLIC_KEY, priv = process.env.VAPID_PRIVATE_KEY;
+  if (!pub || !priv) {
+    const { rows } = await pool.query(`SELECT key, value FROM app_settings WHERE key IN ('vapid_public','vapid_private')`);
+    const m = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    if (m.vapid_public && m.vapid_private) { pub = m.vapid_public; priv = m.vapid_private; }
+    else {
+      const k = webpush.generateVAPIDKeys();
+      await pool.query(`INSERT INTO app_settings (key, value) VALUES ('vapid_public', $1), ('vapid_private', $2) ON CONFLICT (key) DO NOTHING`, [k.publicKey, k.privateKey]);
+      const again = await pool.query(`SELECT key, value FROM app_settings WHERE key IN ('vapid_public','vapid_private')`);
+      const m2 = Object.fromEntries(again.rows.map(r => [r.key, r.value]));
+      pub = m2.vapid_public; priv = m2.vapid_private;
+    }
+  }
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'https://github.com/Pallas1997/rescata', pub, priv);
+  vapidPublic = pub;
+}
+
+async function pushKey(req, res) { send(req, res, 200, { publicKey: vapidPublic }); }
+
+async function pushSubscribe(req, res) {
+  const dev = deviceOf(req);
+  const body = await readJson(req);
+  const sub = body.subscription || {};
+  const endpoint = str(sub.endpoint, 1000);
+  const p256dh = str(sub.keys && sub.keys.p256dh, 200), auth = str(sub.keys && sub.keys.auth, 100);
+  if (!/^https:\/\//.test(endpoint) || !p256dh || !auth) throw new HttpError(400, 'Suscripción inválida.');
+  const lat = num(body.lat), lng = num(body.lng), radius = num(body.radius_km);
+  await pool.query(
+    `INSERT INTO push_subs (endpoint, device_id, p256dh, auth, lat, lng, radius_km)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (endpoint) DO UPDATE SET device_id = EXCLUDED.device_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth,
+       lat = COALESCE(EXCLUDED.lat, push_subs.lat), lng = COALESCE(EXCLUDED.lng, push_subs.lng), radius_km = EXCLUDED.radius_km`,
+    [endpoint, dev.id, p256dh, auth, lat, lng, radius && radius > 0 ? radius : null]
+  );
+  send(req, res, 200, { ok: true });
+}
+
+async function pushUnsubscribe(req, res) {
+  const dev = deviceOf(req);
+  const body = await readJson(req);
+  const endpoint = str(body.endpoint, 1000);
+  if (endpoint) await pool.query('DELETE FROM push_subs WHERE endpoint = $1', [endpoint]);
+  else await pool.query('DELETE FROM push_subs WHERE device_id = $1', [dev.id]);
+  send(req, res, 200, { ok: true });
+}
+
+async function pushStatus(req, res) {
+  const dev = deviceOf(req);
+  const { rows } = await pool.query('SELECT count(*)::int AS n FROM push_subs WHERE device_id = $1', [dev.id]);
+  send(req, res, 200, { subscribed: rows[0].n > 0 });
+}
+
+function distanceKm(a, b) {
+  const R = 6371, toRad = x => x * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+// Avisa a todos los suscriptos (menos a quien publicó). Corre en segundo plano.
+async function notifyNewPost(post, authorId) {
+  if (!vapidPublic) return;
+  const { rows } = await pool.query('SELECT endpoint, p256dh, auth, lat, lng, radius_km FROM push_subs WHERE device_id <> $1', [authorId]);
+  const where = post.hood || post.street;
+  const payload = JSON.stringify({
+    title: `📍 Nuevo en Rescatá${where ? ' · ' + where : ''}`,
+    body: `${post.title}${post.desc ? ' — ' + post.desc.slice(0, 80) : ''}`,
+    url: `?p=${post.id}`,
+    image: post.img,
+    tag: `post-${post.id}`,
+  });
+  let sent = 0, removed = 0;
+  for (const s of rows) {
+    if (s.radius_km && post.gps && s.lat != null && s.lng != null && distanceKm(post.gps, { lat: s.lat, lng: s.lng }) > s.radius_km) continue;
+    try {
+      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 6 * 3600, urgency: 'high' });
+      sent++;
+    } catch (e) {
+      if (e.statusCode === 404 || e.statusCode === 410) { await pool.query('DELETE FROM push_subs WHERE endpoint = $1', [s.endpoint]); removed++; }
+      else console.error('push error', e.statusCode || '', e.body || e.message);
+    }
+  }
+  console.log(`push: nuevo post ${post.id} → ${sent} enviados, ${removed} vencidos borrados`);
+}
+
+// ---------- dirección a partir del GPS (OpenStreetMap / Nominatim) ----------
+// Nominatim pide: identificarse con User-Agent, máximo 1 pedido por segundo y cachear.
+const GEO_URL = process.env.GEOCODER_URL || 'https://nominatim.openstreetmap.org/reverse';
+const GEO_UA = process.env.GEOCODER_UA || 'RescataApp/1.0 (https://github.com/Pallas1997/rescata)';
+const geoCache = new Map();
+let geoQueue = Promise.resolve();
+let geoLast = 0;
+
+function formatAddress(a) {
+  if (!a) return { street: '', hood: '' };
+  const road = a.road || a.pedestrian || a.footway || a.path || a.residential || '';
+  let street = road;
+  if (road && a.house_number) {
+    // Altura aproximada: redondeamos a la centena para no marcar una casa puntual
+    const n = parseInt(a.house_number, 10);
+    street = Number.isFinite(n) ? `${road} ${Math.floor(n / 100) * 100 || n}` : `${road} ${a.house_number}`;
+  }
+  const hood = a.suburb || a.neighbourhood || a.quarter || a.city_district || a.town || a.city || a.village || a.municipality || '';
+  let city = a.city || a.town || a.village || a.municipality || a.state_district || '';
+  if (/Ciudad Aut[oó]noma de Buenos Aires/i.test(city)) city = 'CABA';
+  return { street, hood: hood && city && hood !== city ? `${hood}, ${city}` : (hood || city) };
+}
+
+async function reverseGeocode(req, res, url) {
+  const lat = num(url.searchParams.get('lat'));
+  const lng = num(url.searchParams.get('lng'));
+  if (lat == null || lng == null || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw new HttpError(400, 'Coordenadas inválidas.');
+  const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  if (geoCache.has(key)) return send(req, res, 200, geoCache.get(key));
+
+  const job = geoQueue.then(async () => {
+    const wait = 1100 - (Date.now() - geoLast);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    geoLast = Date.now();
+    const q = new URLSearchParams({ format: 'jsonv2', lat, lon: lng, zoom: '18', addressdetails: '1', 'accept-language': 'es' });
+    const r = await fetch(`${GEO_URL}?${q}`, { headers: { 'User-Agent': GEO_UA }, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw new HttpError(502, 'No pude averiguar la dirección.');
+    return r.json();
+  });
+  geoQueue = job.catch(() => {});
+  let data;
+  try { data = await job; } catch (e) { throw e.status ? e : new HttpError(502, 'No pude averiguar la dirección.'); }
+  const out = formatAddress(data.address);
+  if (geoCache.size > 5000) geoCache.clear();
+  geoCache.set(key, out);
+  send(req, res, 200, out);
+}
+
 // ---------- router ----------
 async function handle(req, res) {
   const url = new URL(req.url, 'http://x');
@@ -309,6 +451,13 @@ async function handle(req, res) {
   if (parts[0] !== 'api') throw new HttpError(404, 'Ruta no encontrada.');
 
   if (parts[1] === 'notifications' && req.method === 'GET' && parts.length === 2) return notifications(req, res, url);
+  if (parts[1] === 'geocode' && parts[2] === 'reverse' && req.method === 'GET') return reverseGeocode(req, res, url);
+  if (parts[1] === 'push') {
+    if (parts[2] === 'key' && req.method === 'GET') return pushKey(req, res);
+    if (parts[2] === 'status' && req.method === 'GET') return pushStatus(req, res);
+    if (parts[2] === 'subscribe' && req.method === 'POST') return pushSubscribe(req, res);
+    if (parts[2] === 'unsubscribe' && req.method === 'POST') return pushUnsubscribe(req, res);
+  }
 
   if (parts[1] === 'posts') {
     if (parts.length === 2 && req.method === 'GET') return listPosts(req, res, url);
@@ -338,6 +487,7 @@ const server = http.createServer((req, res) => {
 async function start() {
   const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   await pool.query(sql);
+  await setupPush();
   server.listen(PORT, () => console.log(`Rescatá API escuchando en el puerto ${PORT}`));
 }
 
@@ -345,4 +495,4 @@ if (require.main === module) {
   start().catch(e => { console.error('No pude arrancar:', e); process.exit(1); });
 }
 
-module.exports = { server, pool, start };
+module.exports = { server, pool, start, formatAddress };

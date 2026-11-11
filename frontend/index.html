@@ -9,9 +9,11 @@
 <meta name="apple-mobile-web-app-title" content="Rescatá">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon.svg">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Rescatá – cosas en la calle</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" defer></script>
 <style>
   :root{
     --blue:#1877F2; --bg:#F0F2F5; --card:#fff; --text:#050505; --muted:#65676B; --line:#E4E6EB;
@@ -112,6 +114,13 @@
   .d-sec p{font-size:15px;line-height:1.45}
   .map{height:150px;border-radius:10px;background:linear-gradient(135deg,var(--map1) 0%,var(--map2) 100%);position:relative;overflow:hidden;margin-top:10px}
   .map svg{position:absolute;inset:0;width:100%;height:100%}
+  .lmap{height:200px;border-radius:10px;overflow:hidden;margin:4px 0 10px;border:1px solid var(--line);z-index:0;position:relative}
+  .lmap.big{height:220px;margin-top:10px}
+  [data-theme="dark"] .leaflet-tile{filter:invert(1) hue-rotate(180deg) brightness(.95) contrast(.9)}
+  .leaflet-container{font-family:inherit;background:var(--chip)}
+  .pin{width:30px;height:42px}
+  .loc-warn{font-size:13px;line-height:1.4;color:#8a5a00;background:#FFF4CE;border-radius:8px;padding:8px 10px;margin-bottom:10px}
+  [data-theme="dark"] .loc-warn{background:#3d3418;color:#f3dc92}
   .user{display:flex;align-items:center;gap:10px}
   .avatar{width:40px;height:40px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-weight:700}
   .interest{font-size:14px;color:var(--muted);margin-top:6px}
@@ -119,6 +128,14 @@
   .link-row button{color:var(--muted);font-size:13.5px;font-weight:600}
   .link-row .danger{color:var(--red)}
 
+  .push-card{margin:12px;background:var(--card);border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start}
+  .push-card .bell{width:42px;height:42px;border-radius:50%;background:var(--chip-on);display:grid;place-items:center;font-size:20px;flex:none}
+  .push-card h4{font-size:15px;margin-bottom:3px}
+  .push-card p{font-size:13.5px;color:var(--muted);line-height:1.4}
+  .push-card .btns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .push-card .btns button{padding:8px 14px;border-radius:8px;font-weight:700;font-size:14px;background:var(--chip)}
+  .push-card .btns .ok{background:var(--blue);color:#fff}
+  .steps{margin:6px 0 0 18px;color:var(--text);font-size:14px;line-height:1.6}
   .notif{display:flex;gap:12px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line);align-items:center;width:100%;text-align:left}
   .notif.new{background:var(--new)}
   .notif img{width:56px;height:56px;border-radius:8px;object-fit:cover;flex:none;background:var(--chip)}
@@ -221,6 +238,7 @@
           Usar mi ubicación actual
         </button>
         <div id="loc-status"></div>
+        <div id="pub-map" class="lmap" style="display:none"></div>
         <input class="field" id="f-street" maxlength="120" placeholder="Calle y altura o esquina (ej: Corrientes y Medrano)" oninput="check()">
         <input class="field" id="f-hood" maxlength="80" placeholder="Barrio / localidad" style="margin-top:8px" oninput="check()">
         <p class="hint">Poné una referencia aproximada, no hace falta la dirección exacta de una casa.</p>
@@ -234,6 +252,7 @@
   <!-- AVISOS -->
   <section class="screen" id="s-alerts">
     <div class="bar"><h2>Avisos</h2></div>
+    <div id="push-card"></div>
     <div id="alerts"></div>
   </section>
 
@@ -251,6 +270,7 @@
     <div class="settings">
       <button class="set-row" onclick="askName()"><span>Tu nombre</span><small id="set-name">—</small></button>
       <button class="set-row" onclick="toggleTheme()"><span>Modo oscuro</span><span class="switch" id="theme-switch"></span></button>
+      <button class="set-row" onclick="pushOn?disablePush():enablePush()"><span>Notificaciones<br><small id="push-sub">Avisarme cuando alguien publica</small></span><span class="switch" id="push-switch"></span></button>
       <div class="set-row"><span>Servidor</span><small id="set-server">—</small></div>
     </div>
     <div class="section-title">Tus publicaciones</div>
@@ -363,13 +383,15 @@ async function boot(){
     await api('/api/health', {}, 75000);
     mode='online'; hideBanner();
     await refresh();
+    initPush();
+    if(new URLSearchParams(location.search).get('p')){ await openFromUrl(location.href); history.replaceState(null,'',location.pathname); }
     setInterval(()=>{ if(!document.hidden) refresh(true); }, POLL_MS);
     document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refresh(true); });
   }catch(e){
     goDemo('No pude conectar con el servidor (' + esc(e.message) + '). Estás en <b>modo demo</b>. <a href="#" onclick="location.reload();return false" style="color:inherit;font-weight:700">Reintentar</a>');
   }
 }
-async function goDemo(msg){ mode='demo'; showBanner(msg); await refresh(); }
+async function goDemo(msg){ mode='demo'; showBanner(msg); await refresh(); initPush(); }
 function showBanner(h){ $('banner').innerHTML=h; $('banner').classList.add('show'); }
 function hideBanner(){ $('banner').classList.remove('show'); }
 
@@ -461,17 +483,70 @@ function renderFeed(){
   $('grid').innerHTML = list.length ? list.map(card).join('') :
     `<div class="empty" style="grid-column:1/-1">No hay hallazgos acá todavía.<br>¡Sé el primero en publicar uno!</div>`;
 }
-function getPos(){
+// Escucha el GPS unos segundos y se queda con la lectura más precisa
+function getPos(opts={}){
+  const maxWait = opts.maxWait || 7000, goodAcc = opts.goodAcc || 25;
   return new Promise((res,rej)=>{
-    if(!navigator.geolocation) return rej(new Error('sin GPS'));
-    try{ navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude}), rej, {enableHighAccuracy:true,timeout:9000,maximumAge:60000}); }
-    catch(e){ rej(e); }
+    if(!navigator.geolocation) return rej({code:0});
+    let best=null, done=false, wid=null;
+    const finish = () => { if(done) return; done=true; if(wid!=null) navigator.geolocation.clearWatch(wid); clearTimeout(tm);
+      best ? res(best) : rej({code:3}); };
+    const tm = setTimeout(finish, maxWait);
+    try{
+      wid = navigator.geolocation.watchPosition(p=>{
+        const r={lat:p.coords.latitude,lng:p.coords.longitude,acc:Math.round(p.coords.accuracy||9999)};
+        if(!best || r.acc < best.acc) best=r;
+        if(r.acc <= goodAcc) finish();
+      }, err=>{ if(err.code===1 || !best){ done=true; clearTimeout(tm); if(wid!=null) navigator.geolocation.clearWatch(wid); rej(err); } },
+      {enableHighAccuracy:true, timeout:maxWait, maximumAge:0});
+    }catch(e){ clearTimeout(tm); rej({code:0}); }
   });
+}
+function gpsError(e){
+  if(e && e.code===1) return 'Bloqueaste el permiso de ubicación. En iPhone: Ajustes → Privacidad → Localización → Safari → "Al usar la app" y activá "Ubicación exacta".';
+  if(e && e.code===3) return 'El GPS tardó demasiado. Probá de nuevo al aire libre o escribí la calle abajo 👇';
+  return 'No pude acceder a tu ubicación. Escribí la calle abajo 👇';
+}
+
+/* ---------- mapas (Leaflet + OpenStreetMap) ---------- */
+const PIN = '<svg class="pin" viewBox="0 0 30 42"><path d="M15 1C7.3 1 1 7 1 14.6 1 25 15 41 15 41s14-16 14-26.4C29 7 22.7 1 15 1z" fill="#1877F2" stroke="#fff" stroke-width="2"/><circle cx="15" cy="15" r="5.5" fill="#fff"/></svg>';
+function makeMap(el, pos, draggable, onMove){
+  if(!window.L) return null;
+  const m = L.map(el, {zoomControl:true, attributionControl:true, scrollWheelZoom:false}).setView([pos.lat,pos.lng], 17);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(m);
+  const icon = L.divIcon({html:PIN, className:'', iconSize:[30,42], iconAnchor:[15,41]});
+  const mk = L.marker([pos.lat,pos.lng], {icon, draggable}).addTo(m);
+  if(pos.acc && pos.acc < 2000) m._acc = L.circle([pos.lat,pos.lng], {radius:pos.acc, color:'#1877F2', weight:1, fillOpacity:.08}).addTo(m);
+  if(draggable){
+    const moved = ll => { mk.setLatLng(ll); if(m._acc){ m.removeLayer(m._acc); m._acc=null; } onMove({lat:ll.lat, lng:ll.lng}); };
+    mk.on('dragend', () => moved(mk.getLatLng()));
+    m.on('click', e => moved(e.latlng));
+  }
+  m._marker = mk;
+  setTimeout(()=>m.invalidateSize(), 60);
+  return m;
+}
+let pubMap=null, detailMap=null, geoSeq=0;
+async function fillAddress(pos){
+  const seq = ++geoSeq;
+  if(mode!=='online'){ return; }
+  $('addr-status') && ($('addr-status').innerHTML='<span class="spin"></span>Buscando la dirección…');
+  try{
+    const a = await api(`/api/geocode/reverse?lat=${pos.lat.toFixed(6)}&lng=${pos.lng.toFixed(6)}`, {}, 15000);
+    if(seq!==geoSeq) return;
+    if(a.street) $('f-street').value = a.street;
+    if(a.hood) $('f-hood').value = a.hood;
+    $('addr-status') && ($('addr-status').textContent = a.street||a.hood ? 'Dirección completada. Podés corregirla si hace falta.' : 'No encontré la calle exacta, escribila abajo.');
+  }catch(e){
+    if(seq!==geoSeq) return;
+    $('addr-status') && ($('addr-status').textContent='No pude averiguar la calle. El pin queda guardado igual; escribila abajo si querés.');
+  }
+  check();
 }
 async function toggleNear(){
   if(nearMe){ nearMe=false; renderChips(); renderFeed(); return; }
   try{ myPos = await getPos(); nearMe=true; renderChips(); toast('Ordenando por cercanía'); await refresh(); }
-  catch(e){ toast('No pude acceder a tu ubicación. Revisá los permisos.'); }
+  catch(e){ toast(e&&e.code===1 ? 'Activá el permiso de ubicación para Safari' : 'No pude acceder a tu ubicación'); }
 }
 
 /* ---------- detalle ---------- */
@@ -482,6 +557,7 @@ function openDetail(id, fresh){
   const where = [p.street,p.hood].filter(Boolean).join(', ');
   const mapsQ = p.gps ? `${p.gps.lat},${p.gps.lng}` : where;
   const going = p.going;
+  if(detailMap){ detailMap.remove(); detailMap=null; }
   $('detail').innerHTML = `
     <button class="back" onclick="closeDetail()" aria-label="Volver"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
     <div class="rel"><img class="hero" src="${esc(p.img)}" alt="">${p.gone?'<span class="badge" style="top:auto;bottom:12px;left:12px;font-size:13px">Ya no está</span>':''}</div>
@@ -497,11 +573,11 @@ function openDetail(id, fresh){
       <div class="d-sec"><h3>Descripción</h3><p>${esc(p.desc)||'<span style="color:var(--muted)">Sin descripción</span>'}</p></div>
       <div class="d-sec"><h3>Ubicación</h3>
         <p>📍 ${esc(where)||'Sin dirección'}</p>
-        <div class="map"><svg viewBox="0 0 400 150" preserveAspectRatio="none">
+        ${p.gps && window.L ? '<div id="d-map" class="lmap big"></div>' : `<div class="map"><svg viewBox="0 0 400 150" preserveAspectRatio="none">
           <path d="M0 40H400M0 105H400M90 0V150M250 0V150M330 0V150" stroke="var(--road)" stroke-width="10"/>
           <path d="M0 0L400 150" stroke="var(--road)" stroke-width="6" opacity=".7"/>
           <circle cx="200" cy="75" r="26" fill="#1877F2" opacity=".18"/>
-          <path d="M200 50c-10 0-17 7-17 16 0 13 17 30 17 30s17-17 17-30c0-9-7-16-17-16z" fill="#1877F2"/><circle cx="200" cy="66" r="6" fill="#fff"/></svg></div>
+          <path d="M200 50c-10 0-17 7-17 16 0 13 17 30 17 30s17-17 17-30c0-9-7-16-17-16z" fill="#1877F2"/><circle cx="200" cy="66" r="6" fill="#fff"/></svg></div>`}
         <p style="margin-top:10px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQ)}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600;text-decoration:none">Cómo llegar en Google Maps →</a></p>
       </div>
       <div class="d-sec"><div class="user"><div class="avatar">${esc((p.mine?(NAME||'V'):(p.user||'A'))[0].toUpperCase())}</div><div><b>${p.mine?'Vos':esc(p.user)}</b><div class="d-meta">Avisó este hallazgo</div></div></div></div>
@@ -509,6 +585,7 @@ function openDetail(id, fresh){
     </div>`;
   if(!fresh) $('detail').scrollTop = 0;
   $('detail').classList.add('open');
+  if(p.gps && $('d-map')) setTimeout(()=>{ if($('d-map') && !detailMap) detailMap = makeMap($('d-map'), p.gps, false); }, 280);
 }
 function closeDetail(){ $('detail').classList.remove('open'); }
 function patch(p){ const i=posts.findIndex(x=>x.id===p.id); if(i>=0) posts[i]={...posts[i],...p}; else posts.unshift(p); }
@@ -548,10 +625,22 @@ function onPhoto(input){
 }
 async function useGPS(){
   const st=$('loc-status');
-  st.innerHTML=`<p class="hint" style="margin:0 0 10px"><span class="spin"></span>Buscando tu ubicación…</p>`;
-  try{ gps = await getPos(); myPos = gps;
-    st.innerHTML=`<div class="loc-ok">✓ Ubicación agregada</div>`; check(); }
-  catch(e){ st.innerHTML=`<p class="hint" style="margin:0 0 10px;color:var(--red)">No pude acceder a tu ubicación. Escribí la calle abajo 👇</p>`; $('f-street').focus(); }
+  st.innerHTML=`<p class="hint" style="margin:0 0 10px"><span class="spin"></span>Buscando tu ubicación… (puede tardar unos segundos)</p>`;
+  try{
+    const pos = await getPos();
+    gps = {lat:pos.lat, lng:pos.lng}; myPos = gps;
+    const warn = pos.acc > 150 ? `<div class="loc-warn">⚠️ Tu celular da una ubicación aproximada (±${pos.acc>=1000?(pos.acc/1000).toFixed(1)+' km':pos.acc+' m'}). Mové el pin al lugar exacto, o activá "Ubicación exacta" en los ajustes de Safari.</div>` : '';
+    st.innerHTML = `<div class="loc-ok">✓ Ubicación marcada (±${pos.acc} m)</div>${warn}<p class="hint" style="margin:-4px 0 8px">Si no es exacta, arrastrá el pin o tocá el mapa donde está el objeto.</p>`;
+    const el=$('pub-map'); el.style.display='block';
+    if(pubMap){ pubMap.remove(); pubMap=null; }
+    pubMap = makeMap(el, pos, true, ll => { gps = ll; fillAddress(ll); });
+    if(!pubMap) el.style.display='none';
+    if(!$('addr-status')) $('f-street').insertAdjacentHTML('beforebegin','<p class="hint" id="addr-status" style="margin:0 0 8px"></p>');
+    check();
+    await fillAddress(gps);
+  }catch(e){
+    st.innerHTML=`<p class="hint" style="margin:0 0 10px;color:var(--red)">${gpsError(e)}</p>`; $('f-street').focus();
+  }
 }
 function check(){
   const ok = photo && $('f-title').value.trim() && (gps || $('f-street').value.trim() || $('f-hood').value.trim());
@@ -572,6 +661,98 @@ function resetForm(){
   photo=null; gps=null; selCat='Muebles';
   ['f-title','f-desc','f-street','f-hood'].forEach(i=>$(i).value='');
   $('cnt').textContent='0/300'; $('loc-status').innerHTML=''; setPhotoBox(); check();
+  if(pubMap){ pubMap.remove(); pubMap=null; } $('pub-map').style.display='none';
+  if($('addr-status')) $('addr-status').remove(); geoSeq++;
+}
+
+/* ---------- notificaciones push ---------- */
+const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+let swReg=null, pushOn=false, pushBusy=false;
+function b64ToU8(b64){ const pad='='.repeat((4-b64.length%4)%4); const raw=atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/')); return Uint8Array.from(raw, c=>c.charCodeAt(0)); }
+async function initPush(){
+  if('serviceWorker' in navigator){
+    try{
+      swReg = await navigator.serviceWorker.register('sw.js');
+      navigator.serviceWorker.addEventListener('message', ev => { if(ev.data && ev.data.type==='open') openFromUrl(ev.data.url); });
+    }catch(e){ swReg=null; }
+  }
+  if(pushSupported && swReg){
+    try{
+      const sub = await swReg.pushManager.getSubscription();
+      pushOn = !!sub && Notification.permission==='granted';
+      if(pushOn && mode==='online') api('/api/push/subscribe',{method:'POST',body:JSON.stringify(subBody(sub))}).catch(()=>{});
+    }catch(e){}
+  }
+  renderPush();
+}
+function subBody(sub){
+  const r = ls.get('rescata_push_radius', null);
+  return { subscription: sub.toJSON ? sub.toJSON() : sub, radius_km: r, lat: r&&myPos?myPos.lat:null, lng: r&&myPos?myPos.lng:null };
+}
+function pushState(){
+  if(mode!=='online') return 'offline';
+  if(isIOS && !isStandalone()) return 'ios-install';
+  if(!pushSupported || !swReg) return 'unsupported';
+  if(Notification.permission==='denied') return 'denied';
+  return pushOn ? 'on' : 'off';
+}
+function renderPush(){
+  const st = pushState(), r = ls.get('rescata_push_radius', null);
+  const radiusBtns = `<div class="btns"><button class="${!r?'ok':''}" onclick="setRadius(null)">Todo</button><button class="${r?'ok':''}" onclick="setRadius(5)">Solo cerca (5 km)</button></div>`;
+  const cards = {
+    'off': `<div class="push-card"><div class="bell">🔔</div><div><h4>Enterate al toque</h4><p>Recibí una notificación cada vez que alguien publica un hallazgo, aunque tengas la app cerrada.</p><div class="btns"><button class="ok" onclick="enablePush()">Activar notificaciones</button></div></div></div>`,
+    'on': `<div class="push-card"><div class="bell">✅</div><div><h4>Notificaciones activadas</h4><p>Te avisamos cuando alguien publica. ¿De qué querés enterarte?</p>${radiusBtns}<div class="btns"><button onclick="disablePush()">Desactivar</button></div></div></div>`,
+    'ios-install': `<div class="push-card"><div class="bell">📲</div><div><h4>Para recibir notificaciones en iPhone</h4><p>Apple solo las permite si Rescatá está en tu pantalla de inicio:</p><ol class="steps"><li>Tocá <b>Compartir</b> (el cuadrado con flecha ↑) en Safari</li><li>Elegí <b>Agregar a inicio</b></li><li>Abrí Rescatá desde el ícono nuevo y volvé a esta pestaña</li></ol></div></div>`,
+    'denied': `<div class="push-card"><div class="bell">🔕</div><div><h4>Notificaciones bloqueadas</h4><p>Las bloqueaste en este celular. Para activarlas: ${isIOS?'Ajustes → Notificaciones → Rescatá → Permitir notificaciones':'tocá el candado al lado de la dirección → Permisos → Notificaciones → Permitir'}.</p></div></div>`,
+    'unsupported': `<div class="push-card"><div class="bell">ℹ️</div><div><h4>Notificaciones no disponibles</h4><p>Este navegador no soporta notificaciones. Probá con Chrome en Android o Safari en iPhone (iOS 16.4 o más nuevo).</p></div></div>`,
+    'offline': ''
+  };
+  $('push-card').innerHTML = cards[st] || '';
+  $('push-switch').classList.toggle('on', st==='on');
+  $('push-sub').textContent = {on: r?'Activadas · solo cerca':'Activadas · todo', off:'Avisarme cuando alguien publica', 'ios-install':'Primero agregá la app a inicio', denied:'Bloqueadas en los ajustes', unsupported:'No disponible en este navegador', offline:'Necesita conexión'}[st];
+}
+async function enablePush(){
+  if(pushBusy) return;
+  const st = pushState();
+  if(st==='offline'){ toast('Las notificaciones necesitan conexión con el servidor'); return; }
+  if(st==='ios-install'){ go('alerts'); toast('Primero agregá Rescatá a tu pantalla de inicio'); return; }
+  if(st==='unsupported' || st==='denied'){ go('alerts'); return; }
+  pushBusy=true;
+  try{
+    const perm = await Notification.requestPermission();
+    if(perm!=='granted'){ toast('Sin permiso no podemos avisarte'); return; }
+    const reg = swReg || await navigator.serviceWorker.ready;
+    const { publicKey } = await api('/api/push/key');
+    let sub = await reg.pushManager.getSubscription();
+    if(!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:b64ToU8(publicKey) });
+    await api('/api/push/subscribe',{method:'POST',body:JSON.stringify(subBody(sub))});
+    pushOn=true; toast('🔔 Listo, te avisamos cuando alguien publique');
+  }catch(e){ toast('No se pudieron activar: '+(e.message||e)); }
+  finally{ pushBusy=false; renderPush(); }
+}
+async function disablePush(){
+  try{
+    const sub = swReg && await swReg.pushManager.getSubscription();
+    await api('/api/push/unsubscribe',{method:'POST',body:JSON.stringify({endpoint: sub?sub.endpoint:null})}).catch(()=>{});
+    if(sub) await sub.unsubscribe();
+  }catch(e){}
+  pushOn=false; renderPush(); toast('Notificaciones desactivadas');
+}
+async function setRadius(r){
+  if(r){ try{ myPos = await getPos({maxWait:6000, goodAcc:100}); }catch(e){ toast('Necesito tu ubicación para avisarte solo de lo cercano'); return; } }
+  ls.set('rescata_push_radius', r);
+  try{ const sub = await swReg.pushManager.getSubscription(); if(sub) await api('/api/push/subscribe',{method:'POST',body:JSON.stringify(subBody(sub))}); }catch(e){}
+  renderPush(); toast(r ? 'Solo te avisamos de lo que esté a menos de 5 km' : 'Te avisamos de todo');
+}
+async function openFromUrl(u){
+  let id=null; try{ id = new URL(u, location.href).searchParams.get('p'); }catch(e){}
+  if(!id) return;
+  go('feed');
+  let p = findPost(id);
+  if(!p && mode==='online'){ try{ p = (await api('/api/posts/'+encodeURIComponent(id))).post; patch(p); }catch(e){} }
+  if(p) openDetail(p.id, p); else toast('Esa publicación ya no está disponible');
 }
 
 /* ---------- avisos ---------- */

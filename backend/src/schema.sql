@@ -43,3 +43,22 @@ CREATE TABLE IF NOT EXISTS reports (
 );
 
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Notificaciones push: un registro por celular/navegador suscripto
+CREATE TABLE IF NOT EXISTS push_subs (
+  endpoint    TEXT PRIMARY KEY,
+  device_id   TEXT NOT NULL,
+  p256dh      TEXT NOT NULL,
+  auth        TEXT NOT NULL,
+  lat         DOUBLE PRECISION,
+  lng         DOUBLE PRECISION,
+  radius_km   DOUBLE PRECISION,          -- NULL = avisarme de todo
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS push_subs_device_idx ON push_subs (device_id);
+
+-- Configuración interna (por ejemplo, las claves VAPID que se generan solas)
+CREATE TABLE IF NOT EXISTS app_settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);

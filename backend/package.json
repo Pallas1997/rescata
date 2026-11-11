@@ -1,7 +1,7 @@
 {
   "name": "rescata-api",
   "version": "1.0.0",
-  "description": "Backend de Rescatá: publicar objetos encontrados en la calle",
+  "description": "Backend de Rescat\u00e1: publicar objetos encontrados en la calle",
   "main": "src/server.js",
   "type": "commonjs",
   "scripts": {
@@ -12,6 +12,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "web-push": "^3.6.7"
   }
 }

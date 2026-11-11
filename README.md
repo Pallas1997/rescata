@@ -49,6 +49,10 @@ Todas las rutas piden el header `X-Device-Id` (lo genera la app) y opcionalmente
 | POST | `/api/posts/:id/report` | Denunciar (con 3 denuncias se oculta) |
 | DELETE | `/api/posts/:id` | Borrar (solo quien publicó) |
 | GET | `/api/notifications?since=&lat=&lng=` | Interesados en lo tuyo + hallazgos nuevos cerca |
+| GET | `/api/geocode/reverse?lat=&lng=` | Calle y barrio a partir del GPS (OpenStreetMap) |
+| GET | `/api/push/key` | Clave pública para suscribirse a notificaciones |
+| POST | `/api/push/subscribe` | `{subscription, radius_km?, lat?, lng?}` activa notificaciones |
+| POST | `/api/push/unsubscribe` | Desactiva notificaciones |
 
 Reglas: las publicaciones duran 30 días, las marcadas "ya no está" se ven 2 días más, máximo 15 publicaciones por hora por dispositivo.
 
@@ -65,5 +69,5 @@ Después abrí `frontend/index.html` con `API_URL: 'http://localhost:3000'` en `
 ## Próximos pasos para escalar
 - **Fotos** → mover de la base a Cloudinary o Cloudflare R2 cuando haya muchas (Neon gratis tiene 0,5 GB).
 - **Cuentas** → hoy cada celular tiene un ID anónimo; sumar login (Google / mail) para poder cambiar de celular.
-- **Notificaciones push reales** → hoy los avisos se actualizan cada 45 s con la app abierta; con Expo o Web Push llegan con la app cerrada.
+- **Notificaciones push** → ya funcionan con Web Push (claves VAPID generadas solas y guardadas en la base). En iPhone requieren iOS 16.4+ y la app agregada a la pantalla de inicio.
 - **App nativa** → el mismo backend sirve para una versión con Expo (React Native).
