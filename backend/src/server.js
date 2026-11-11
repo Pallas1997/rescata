@@ -218,6 +218,7 @@ async function createPost(req, res) {
 async function addInterest(req, res, id) {
   const dev = deviceOf(req);
   const client = await pool.connect();
+  let added = false;
   try {
     await client.query('BEGIN');
     const ins = await client.query(
@@ -226,11 +227,12 @@ async function addInterest(req, res, id) {
        ON CONFLICT DO NOTHING`,
       [id, dev.id, dev.name]
     );
-    if (ins.rowCount) await client.query('UPDATE posts SET interest_count = interest_count + 1 WHERE id = $1', [id]);
+    if (ins.rowCount) { added = true; await client.query('UPDATE posts SET interest_count = interest_count + 1 WHERE id = $1', [id]); }
     await client.query('COMMIT');
   } catch (e) { await client.query('ROLLBACK'); throw e; }
   finally { client.release(); }
-  return getPost(req, res, id);
+  await getPost(req, res, id);
+  if (added) notifyInterest(id, dev, publicBase(req)).catch(e => console.error('push interés falló', e.message));
 }
 
 async function setGone(req, res, id) {
@@ -364,21 +366,9 @@ function distanceKm(a, b) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
-// Avisa a todos los suscriptos (menos a quien publicó). Corre en segundo plano.
-async function notifyNewPost(post, authorId) {
-  if (!vapidPublic) return;
-  const { rows } = await pool.query('SELECT endpoint, p256dh, auth, lat, lng, radius_km FROM push_subs WHERE device_id <> $1', [authorId]);
-  const where = post.hood || post.street;
-  const payload = JSON.stringify({
-    title: `📍 Nuevo en Rescatá${where ? ' · ' + where : ''}`,
-    body: `${post.title}${post.desc ? ' — ' + post.desc.slice(0, 80) : ''}`,
-    url: `?p=${post.id}`,
-    image: post.img,
-    tag: `post-${post.id}`,
-  });
+async function sendPush(subs, payload) {
   let sent = 0, removed = 0;
-  for (const s of rows) {
-    if (s.radius_km && post.gps && s.lat != null && s.lng != null && distanceKm(post.gps, { lat: s.lat, lng: s.lng }) > s.radius_km) continue;
+  for (const s of subs) {
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 6 * 3600, urgency: 'high' });
       sent++;
@@ -387,6 +377,44 @@ async function notifyNewPost(post, authorId) {
       else console.error('push error', e.statusCode || '', e.body || e.message);
     }
   }
+  return { sent, removed };
+}
+
+// Avisa a quien publicó que alguien lo va a ir a buscar
+async function notifyInterest(postId, dev, base) {
+  if (!vapidPublic) return;
+  const { rows } = await pool.query('SELECT title, author_id FROM posts WHERE id = $1', [postId]);
+  const p = rows[0];
+  if (!p || p.author_id === dev.id) return;
+  const subs = await pool.query('SELECT endpoint, p256dh, auth FROM push_subs WHERE device_id = $1', [p.author_id]);
+  if (!subs.rows.length) return;
+  const payload = JSON.stringify({
+    type: 'interest', post_id: postId,
+    title: `🙋 ${dev.name} va a buscar tu ${p.title}`,
+    body: 'Tocá para ver la publicación',
+    url: `?p=${postId}`,
+    image: `${base}/api/posts/${postId}/image`,
+    tag: `i-${postId}-${dev.name}`,
+  });
+  const r = await sendPush(subs.rows, payload);
+  console.log(`push: interés en ${postId} → ${r.sent} enviados`);
+}
+
+// Avisa a todos los suscriptos (menos a quien publicó). Corre en segundo plano.
+async function notifyNewPost(post, authorId) {
+  if (!vapidPublic) return;
+  const { rows } = await pool.query('SELECT endpoint, p256dh, auth, lat, lng, radius_km FROM push_subs WHERE device_id <> $1', [authorId]);
+  const where = post.hood || post.street;
+  const payload = JSON.stringify({
+    type: 'post', post_id: post.id,
+    title: `📍 Nuevo en Rescatá${where ? ' · ' + where : ''}`,
+    body: `${post.title}${post.desc ? ' — ' + post.desc.slice(0, 80) : ''}`,
+    url: `?p=${post.id}`,
+    image: post.img,
+    tag: `post-${post.id}`,
+  });
+  const targets = rows.filter(s => !(s.radius_km && post.gps && s.lat != null && s.lng != null && distanceKm(post.gps, { lat: s.lat, lng: s.lng }) > s.radius_km));
+  const { sent, removed } = await sendPush(targets, payload);
   console.log(`push: nuevo post ${post.id} → ${sent} enviados, ${removed} vencidos borrados`);
 }
 

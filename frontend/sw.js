@@ -14,7 +14,13 @@ self.addEventListener('push', e => {
     data: { url: d.url || './' },
   };
   if (d.image) opts.image = d.image;
-  e.waitUntil(self.registration.showNotification(d.title || 'Rescatá', opts));
+  e.waitUntil((async () => {
+    // Siempre mostramos la notificación del sistema (iOS lo exige en cada push)...
+    await self.registration.showNotification(d.title || 'Rescatá', opts);
+    // ...y si la app está abierta en pantalla, le pasamos el aviso para el cartel emergente
+    const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of list) if (c.visibilityState === 'visible') c.postMessage({ type: 'push', data: { ...d, tag: opts.tag } });
+  })());
 });
 
 self.addEventListener('notificationclick', e => {

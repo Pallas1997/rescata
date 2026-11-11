@@ -166,6 +166,17 @@
   .sheet .row .ok{background:var(--blue);color:#fff}
   .sheet .row .bad{background:var(--red);color:#fff}
 
+  .popwrap{position:absolute;top:calc(8px + env(safe-area-inset-top));left:8px;right:8px;z-index:70;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+  .pop{pointer-events:auto;display:flex;gap:10px;align-items:center;background:var(--card);color:var(--text);border-radius:14px;padding:10px 10px 10px 12px;box-shadow:0 10px 28px rgba(0,0,0,.28);border:1px solid var(--line);transform:translateY(-140%);opacity:0;transition:transform .32s cubic-bezier(.2,.9,.3,1.15),opacity .2s;cursor:pointer;position:relative;overflow:hidden;touch-action:pan-x}
+  .pop.show{transform:none;opacity:1}
+  .pop img,.pop .ic{width:44px;height:44px;border-radius:9px;object-fit:cover;flex:none;background:var(--chip-on);display:grid;place-items:center;font-size:22px}
+  .pop .tx{flex:1;min-width:0}
+  .pop .tx b{display:block;font-size:14px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pop .tx span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;color:var(--muted);line-height:1.3;margin-top:1px}
+  .pop .tx small{font-size:11.5px;color:var(--blue);font-weight:700}
+  .pop .x{width:28px;height:28px;border-radius:50%;background:var(--chip);flex:none;display:grid;place-items:center;font-size:13px;color:var(--muted)}
+  .pop .timer{position:absolute;left:0;bottom:0;height:3px;background:var(--blue);width:100%;transform-origin:left;animation:popt 7s linear forwards}
+  @keyframes popt{to{transform:scaleX(0)}}
   .toast{position:absolute;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);background:#323436;color:#fff;padding:12px 18px;border-radius:10px;font-size:14px;opacity:0;transition:.25s;z-index:60;pointer-events:none;max-width:90%;text-align:center}
   .toast.show{opacity:1;transform:translateX(-50%)}
   .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:rot .8s linear infinite;vertical-align:-2px;margin-right:6px}
@@ -270,6 +281,7 @@
     <div class="settings">
       <button class="set-row" onclick="askName()"><span>Tu nombre</span><small id="set-name">—</small></button>
       <button class="set-row" onclick="toggleTheme()"><span>Modo oscuro</span><span class="switch" id="theme-switch"></span></button>
+      <button class="set-row" onclick="togglePops()"><span>Avisos emergentes<br><small>Cartel arriba cuando usás la app</small></span><span class="switch" id="pops-switch"></span></button>
       <button class="set-row" onclick="pushOn?disablePush():enablePush()"><span>Notificaciones<br><small id="push-sub">Avisarme cuando alguien publica</small></span><span class="switch" id="push-switch"></span></button>
       <div class="set-row"><span>Servidor</span><small id="set-server">—</small></div>
     </div>
@@ -286,6 +298,7 @@
     <button data-go="profile" onclick="go('profile')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Perfil</button>
   </nav>
 
+  <div class="popwrap" id="popwrap" aria-live="polite"></div>
   <div class="sheet-bg" id="sheet-bg" onclick="if(event.target===this)closeSheet()"><div class="sheet" id="sheet"></div></div>
   <div class="toast" id="toast"></div>
 </div>
@@ -294,7 +307,7 @@
 const $ = id => document.getElementById(id);
 const CATS = ['Muebles','Electrónica','Deco','Ropa','Libros','Plantas','Bicis','Otros'];
 const API_URL = ((window.RESCATA_CONFIG||{}).API_URL || '').replace(/\/$/,'');
-const POLL_MS = 45000;
+const POLL_MS = 20000;
 let filter='Todo', selCat='Muebles', photo=null, gps=null, myPos=null, nearMe=false;
 let posts=[], notif={interests:[],nearby:[]}, mode='loading', busy=false;
 
@@ -335,7 +348,7 @@ const remote = {
   async report(id,reason){ return api(`/api/posts/${id}/report`,{method:'POST',body:JSON.stringify({reason})}); },
   async remove(id){ return api(`/api/posts/${id}`,{method:'DELETE'}); },
   async notifications(since){
-    const qs = new URLSearchParams({since: since||''}); if(myPos){ qs.set('lat',myPos.lat); qs.set('lng',myPos.lng); }
+    const qs = new URLSearchParams({since: since||''}); if(myPos){ qs.set('lat',myPos.lat); qs.set('lng',myPos.lng); qs.set('radius_km', ls.get('rescata_push_radius', null) || 100000); }
     return api('/api/notifications?'+qs);
   }
 };
@@ -376,7 +389,7 @@ const store = () => mode==='online' ? remote : local;
 
 /* ---------- arranque ---------- */
 async function boot(){
-  renderChips(); setPhotoBox(); applyThemeUI(); renderSkeleton(); updateProfileHead();
+  renderChips(); setPhotoBox(); applyThemeUI(); renderSkeleton(); updateProfileHead(); renderPopsSwitch();
   if(!API_URL){ goDemo('No hay servidor configurado: estás en <b>modo demo</b>, lo que publiques queda solo en este celular.'); return; }
   showBanner('<span class="spin"></span>Conectando con el servidor… la primera vez del día puede tardar hasta un minuto.');
   try{
@@ -675,7 +688,19 @@ async function initPush(){
   if('serviceWorker' in navigator){
     try{
       swReg = await navigator.serviceWorker.register('sw.js');
-      navigator.serviceWorker.addEventListener('message', ev => { if(ev.data && ev.data.type==='open') openFromUrl(ev.data.url); });
+      navigator.serviceWorker.addEventListener('message', ev => {
+        if(!ev.data) return;
+        if(ev.data.type==='open') openFromUrl(ev.data.url);
+        if(ev.data.type==='push'){
+          const d = ev.data.data || {};
+          if(popsOn()){
+            showPop({ key:d.tag, title:d.title, body:d.body, img:d.image, postId:d.post_id, kind:d.type });
+            // Ya lo viste en el cartel: sacamos la notificación del sistema
+            swReg && swReg.getNotifications({tag:d.tag}).then(ns=>ns.forEach(n=>n.close())).catch(()=>{});
+          }
+          refresh(true);
+        }
+      });
     }catch(e){ swReg=null; }
   }
   if(pushSupported && swReg){
@@ -756,10 +781,52 @@ async function openFromUrl(u){
 }
 
 /* ---------- avisos ---------- */
+let lastPollAt = 0;
 async function loadNotifs(){
-  try{ notif = await store().notifications(Date.now()-3*24*3600*1000); }catch(e){}
+  try{
+    notif = await store().notifications(Date.now()-3*24*3600*1000);
+    if(lastPollAt){
+      notif.interests.filter(x=>x.t>lastPollAt).forEach(x=>showPop({ key:`i-${x.post_id}-${x.who}`, kind:'interest',
+        title:`🙋 ${x.who} va a buscar tu ${x.title}`, body:'Tocá para ver la publicación', img:x.img, postId:x.post_id }));
+      notif.nearby.filter(p=>p.t>lastPollAt).forEach(p=>showPop({ key:'post-'+p.id, kind:'post',
+        title:`📍 Nuevo${(p.hood||p.street)?' · '+(p.hood||p.street):''}`, body:p.title+(p.desc?' — '+p.desc.slice(0,80):''), img:p.img, postId:p.id }));
+    }
+    lastPollAt = notif.now || Date.now();
+  }catch(e){}
   updateDot(); if($('s-alerts').classList.contains('active')) renderAlerts();
 }
+
+/* ---------- avisos emergentes (cartel arriba) ---------- */
+const popsOn = () => ls.get('rescata_popups', true);
+let popSeen = new Set(ls.get('rescata_popseen', []));
+function rememberPop(k){ popSeen.add(k); const arr=[...popSeen].slice(-300); popSeen=new Set(arr); ls.set('rescata_popseen', arr); }
+function showPop({key, title, body, img, postId, kind}, force){
+  if(!force && (!popsOn() || !key || popSeen.has(key))) return;
+  if(key) rememberPop(key);
+  const w=$('popwrap'); while(w.children.length>=3) w.firstChild.remove();
+  const el=document.createElement('div'); el.className='pop'; el.setAttribute('role','alert');
+  el.innerHTML = `${img?`<img src="${esc(img)}" alt="">`:`<div class="ic">${kind==='interest'?'🙋':'📍'}</div>`}
+    <div class="tx"><small>RESCATÁ · ahora</small><b>${esc(title)}</b><span>${esc(body||'')}</span></div>
+    <button class="x" aria-label="Cerrar">✕</button><div class="timer"></div>`;
+  let closed=false;
+  const close=()=>{ if(closed) return; closed=true; clearTimeout(el._t); el.style.transform=''; el.classList.remove('show'); setTimeout(()=>el.remove(),320); };
+  el.querySelector('.x').onclick = e => { e.stopPropagation(); close(); };
+  el.onclick = () => { close(); if(postId) openFromUrl('?p='+postId); };
+  let y0=null, dy=0;
+  el.addEventListener('touchstart', e=>{ y0=e.touches[0].clientY; dy=0; el.style.transition='none'; }, {passive:true});
+  el.addEventListener('touchmove', e=>{ if(y0==null) return; dy=Math.min(0, e.touches[0].clientY-y0); el.style.transform=`translateY(${dy}px)`; }, {passive:true});
+  el.addEventListener('touchend', e=>{ el.style.transition=''; y0=null; if(dy<-35){ e.preventDefault(); close(); } else el.style.transform=''; });
+  w.appendChild(el);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('show')));
+  el._t = setTimeout(close, 7000);
+  try{ navigator.vibrate && navigator.vibrate(25); }catch(e){}
+}
+function togglePops(){
+  const on = !popsOn(); ls.set('rescata_popups', on); renderPopsSwitch();
+  if(on) showPop({ title:'Así se ven los avisos emergentes', body:'Te aparecen arriba cuando alguien publica o quiere buscar lo tuyo. Tocalos para abrir la publicación.', kind:'post' }, true);
+  else toast('Avisos emergentes desactivados');
+}
+function renderPopsSwitch(){ $('pops-switch').classList.toggle('on', popsOn()); }
 function updateDot(){
   const seen = ls.get('rescata_seen', 0);
   const n = notif.interests.filter(x=>x.t>seen).length + notif.nearby.filter(x=>x.t>seen).length;
