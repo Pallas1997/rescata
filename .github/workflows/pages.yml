@@ -1,4 +1,4 @@
-# Publica la carpeta frontend/ en GitHub Pages en cada push a main
+# Publica la carpeta frontend/ en GitHub Pages en cada push a main (Rescatá)
 name: Deploy frontend a GitHub Pages
 on:
   push:
