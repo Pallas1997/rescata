@@ -1,0 +1,10 @@
+{
+  "name": "Rescatá",
+  "short_name": "Rescatá",
+  "description": "Rescatá cosas buenas que la gente deja en la calle",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#F0F2F5",
+  "theme_color": "#1877F2",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

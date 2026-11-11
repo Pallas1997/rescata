@@ -1,0 +1,17 @@
+# Blueprint de Render: crea el backend automáticamente desde este repo
+services:
+  - type: web
+    name: rescata-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false   # pegá acá la connection string de Neon
+      - key: ALLOWED_ORIGINS
+        value: "*"    # después: https://pallas1997.github.io
+      - key: NODE_VERSION
+        value: "22"
