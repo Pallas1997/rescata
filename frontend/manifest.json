@@ -1,15 +1,20 @@
 {
+  "id": "/rescata/",
   "name": "Rescatá",
   "short_name": "Rescatá",
-  "description": "Rescatá cosas buenas que la gente deja en la calle",
-  "start_url": "./",
-  "scope": "./",
+  "description": "Rescatá cosas buenas que la gente deja en la calle: publicá lo que encontrás, avisá a los demás y vendé o canjeá lo que no usás.",
+  "lang": "es-AR",
+  "dir": "ltr",
+  "start_url": "/rescata/",
+  "scope": "/rescata/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#F0F2F5",
   "theme_color": "#1877F2",
+  "categories": ["lifestyle", "shopping", "social"],
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
