@@ -62,3 +62,10 @@ CREATE TABLE IF NOT EXISTS app_settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- Ventas y canjes
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS kind     TEXT NOT NULL DEFAULT 'free';   -- free | sale | swap
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS price    BIGINT;                         -- en pesos, solo ventas
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS swap_for TEXT NOT NULL DEFAULT '';       -- qué acepta a cambio
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS wa_phone TEXT NOT NULL DEFAULT '';       -- WhatsApp (formato 549...)
+CREATE INDEX IF NOT EXISTS posts_kind_idx ON posts (kind);

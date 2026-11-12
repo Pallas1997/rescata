@@ -178,6 +178,18 @@
   .pop .timer{position:absolute;left:0;bottom:0;height:3px;background:var(--blue);width:100%;transform-origin:left;animation:popt 7s linear forwards}
   @keyframes popt{to{transform:scaleX(0)}}
   /* estrellas de calidad al publicar */
+  .seg{display:flex;margin:0 16px 10px;background:var(--bg);border-radius:10px;padding:3px;gap:3px}
+  .seg button{flex:1;padding:9px 6px;border-radius:8px;font-weight:700;font-size:14px;color:var(--muted);transition:background .15s}
+  .seg button.on{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.18)}
+  .form .seg{margin:0}
+  .item .price{font-size:14px;font-weight:700;margin-bottom:2px}
+  .item .swap,.d-swap{color:#8E44EC}
+  .d-price{font-weight:800;font-size:20px;margin:4px 0 2px}
+  .d-actions a.wa{flex:1;padding:11px;border-radius:8px;font-weight:700;font-size:15px;background:#25D366;color:#fff;text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px}
+  .d-actions a.wa.off{opacity:.5;pointer-events:none}
+  .money{position:relative}
+  .money span{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:600}
+  .money input{padding-left:26px}
   .quality{background:var(--card);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px}
   .qstars{display:flex;gap:2px;line-height:0}
   .qstar{display:inline-block;width:28px;height:28px}
@@ -254,6 +266,10 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
         <input id="q" placeholder="Buscar en Rescatá" oninput="renderFeed()">
       </div>
+      <div class="seg" id="seg">
+        <button data-sec="free" class="on" onclick="setSection('free')">🆓 Gratis / Encontrar</button>
+        <button data-sec="market" onclick="setSection('market')">💲 Ventas / Canjes</button>
+      </div>
       <div class="chips" id="filter-chips"></div>
     </div>
     <div class="banner" id="banner"></div>
@@ -265,10 +281,15 @@
   <section class="screen" id="s-publish">
     <div class="bar">
       <button onclick="go('feed')" aria-label="Cerrar"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
-      <h2>Avisar un hallazgo</h2>
+      <h2 id="pub-h">Avisar un hallazgo</h2>
       <button class="pub" id="pub-top" onclick="publish()" disabled>Publicar</button>
     </div>
     <div class="form">
+      <div class="seg" id="kind-seg">
+        <button data-k="free" class="on" onclick="setKind('free')">🆓 Lo encontré</button>
+        <button data-k="sale" onclick="setKind('sale')">💲 Vendo</button>
+        <button data-k="swap" onclick="setKind('swap')">🔄 Canjeo</button>
+      </div>
       <div class="card">
         <label class="photo-box" for="cam-input" id="photo-box"></label>
         <div class="photo-actions">
@@ -280,13 +301,27 @@
       </div>
 
       <div class="card">
-        <label class="lbl" for="f-title">¿Qué encontraste?</label>
+        <label class="lbl" for="f-title" id="f-title-lbl">¿Qué encontraste?</label>
         <input class="field" id="f-title" maxlength="60" placeholder="Ej: Silla de madera, mesa de luz…" oninput="check()">
         <label class="lbl" for="f-desc" style="margin-top:12px">Descripción breve</label>
         <textarea class="field" id="f-desc" maxlength="300" placeholder="Estado, tamaño, si hay que llevarlo entre dos…" oninput="check();$('cnt').textContent=this.value.length+'/300'"></textarea>
         <div class="count" id="cnt">0/300</div>
         <label class="lbl" style="margin-top:6px">Categoría</label>
         <div class="cats" id="cat-chips"></div>
+      </div>
+
+      <div class="card" id="market-fields" style="display:none">
+        <div id="price-box">
+          <label class="lbl" for="f-price">Precio</label>
+          <div class="money"><span>$</span><input class="field" id="f-price" inputmode="numeric" placeholder="15.000" oninput="fmtPrice(this);check()"></div>
+        </div>
+        <div id="swap-box">
+          <label class="lbl" for="f-swap" style="margin-top:12px">¿Qué aceptás a cambio? <small style="font-weight:400">(opcional)</small></label>
+          <input class="field" id="f-swap" maxlength="120" placeholder="Ej: una lámpara, libros, lo que ofrezcan…" oninput="check()">
+        </div>
+        <label class="lbl" for="f-wa" style="margin-top:12px">Tu WhatsApp para que te escriban</label>
+        <input class="field" id="f-wa" inputmode="tel" placeholder="Ej: 11 2345-6789" oninput="check()">
+        <p class="hint" id="wa-hint">Con código de área, sin 0 ni 15. Se muestra solo como botón "Escribir por WhatsApp".</p>
       </div>
 
       <div class="card">
@@ -435,7 +470,8 @@ const local = {
   async mine(){ return this._all().filter(p=>p.mine).map(p=>({...p})); },
   async create(p){ const n={...p,id:'p'+Date.now(),img:p.image,t:Date.now(),interest:0,mine:true,user:NAME||'Vos',
       gps:(p.lat!=null?{lat:p.lat,lng:p.lng}:null), street:p.street||(p.lat!=null?'Ubicación por GPS':'')};
-    n.author_effective = this._all().filter(x=>x.mine&&(x.desc||'').trim().length>=MIN_DESC).length + ((p.desc||'').trim().length>=MIN_DESC?1:0);
+    n.kind = p.kind||'free'; if(n.kind!=='free') n.wa = normWA(p.wa);
+    n.author_effective = this._all().filter(x=>x.mine&&(x.kind||'free')==='free'&&(x.desc||'').trim().length>=MIN_DESC).length + (n.kind==='free'&&(p.desc||'').trim().length>=MIN_DESC?1:0);
     delete n.image; this._all().unshift(n); this._save(); return n; },
   async interest(id){ const p=this._all().find(x=>x.id===id); if(!p.going){p.going=true;p.interest=(p.interest||0)+1;} this._save(); return {...p}; },
   async gone(id,g){ const p=this._all().find(x=>x.id===id); p.gone=g; this._save(); return {...p}; },
@@ -541,6 +577,7 @@ function go(name){
   document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('on', b.dataset.go===name));
   closeDetail();
   if(name==='feed') renderFeed();
+  if(name==='publish' && !photo && !$('f-title').value) setKind(section==='market' ? 'sale' : 'free');
   if(name==='alerts'){ renderAlerts(); ls.set('rescata_seen', Date.now()); updateDot(); }
   if(name==='profile') renderProfile();
 }
@@ -551,24 +588,38 @@ function renderChips(){
     ['Todo',...CATS].map(c=>`<button class="chip ${c===filter?'on':''}" onclick="filter='${c}';renderChips();renderFeed()">${c}</button>`).join('');
   $('cat-chips').innerHTML = CATS.map(c=>`<button class="chip ${c===selCat?'on':''}" onclick="selCat='${c}';renderChips()">${c}</button>`).join('');
 }
+let section = 'free';
+const isMarket = p => p.kind==='sale' || p.kind==='swap';
+function setSection(sec){
+  section = sec;
+  document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on', b.dataset.sec===sec));
+  renderFeed();
+}
+const money = n => '$ ' + Number(n||0).toLocaleString('es-AR');
+function priceLabel(p, big){
+  if(p.kind==='sale') return `<div class="${big?'d-price':'price'}">${money(p.price)}</div>`;
+  if(p.kind==='swap') return `<div class="${big?'d-price d-swap':'price swap'}">🔄 CANJE</div>`;
+  return big ? '' : `<div class="free">GRATIS</div>`;
+}
+const goneLabel = p => isMarket(p) ? 'Vendido / no disponible' : 'Ya no está';
 function renderSkeleton(){ $('grid').innerHTML = Array(6).fill('<div class="skel"></div>').join(''); }
 function card(p){
   const where = p.distance_km!=null && nearMe ? km(p.distance_km) : (p.hood||p.street);
   return `<button class="item" onclick="openDetail('${p.id}')">
-    <div class="rel"><img class="ph" src="${esc(p.img)}" alt="" loading="lazy">${p.gone?'<span class="badge">Ya no está</span>':''}</div>
-    <div class="info"><div class="free">GRATIS</div><div class="t">${esc(p.title)}</div>
+    <div class="rel"><img class="ph" src="${esc(p.img)}" alt="" loading="lazy">${p.gone?`<span class="badge">${isMarket(p)?'Vendido':'Ya no está'}</span>`:''}</div>
+    <div class="info">${priceLabel(p)}<div class="t">${esc(p.title)}</div>
     <div class="loc">${esc(where)} · ${ago(p.t)}</div></div></button>`;
 }
 function renderFeed(){
   if(mode==='loading') return;
   const q = $('q').value.toLowerCase().trim();
-  let list = posts.filter(p=>(filter==='Todo'||p.cat===filter) &&
+  let list = posts.filter(p=>(section==='market' ? isMarket(p) : !isMarket(p)) && (filter==='Todo'||p.cat===filter) &&
     (!q || (p.title+' '+p.desc+' '+p.street+' '+p.hood).toLowerCase().includes(q)));
   list.sort((a,b)=> (a.gone-b.gone) || (nearMe && a.distance_km!=null && b.distance_km!=null ? a.distance_km-b.distance_km : b.t-a.t));
-  $('feed-title').textContent = nearMe ? 'Lo más cerca tuyo' : 'Encontrado recientemente';
+  $('feed-title').textContent = section==='market' ? (nearMe ? 'Ventas y canjes cerca tuyo' : 'Ventas y canjes') : (nearMe ? 'Lo más cerca tuyo' : 'Encontrado recientemente');
   $('count-lbl').textContent = list.length + ' objeto' + (list.length===1?'':'s');
   $('grid').innerHTML = list.length ? list.map(card).join('') :
-    `<div class="empty" style="grid-column:1/-1">No hay hallazgos acá todavía.<br>¡Sé el primero en publicar uno!</div>`;
+    `<div class="empty" style="grid-column:1/-1">${section==='market' ? 'Todavía no hay ventas ni canjes.<br>¿Tenés algo para vender o cambiar?' : 'No hay hallazgos acá todavía.<br>¡Sé el primero en publicar uno!'}</div>`;
 }
 // Escucha el GPS unos segundos y se queda con la lectura más precisa
 function getPos(opts={}){
@@ -647,17 +698,21 @@ function openDetail(id, fresh){
   if(detailMap){ detailMap.remove(); detailMap=null; }
   $('detail').innerHTML = `
     <button class="back" onclick="closeDetail()" aria-label="Volver"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-    <div class="rel"><img class="hero" src="${esc(p.img)}" alt="">${p.gone?'<span class="badge" style="top:auto;bottom:12px;left:12px;font-size:13px">Ya no está</span>':''}</div>
+    <div class="rel"><img class="hero" src="${esc(p.img)}" alt="">${p.gone?`<span class="badge" style="top:auto;bottom:12px;left:12px;font-size:13px">${isMarket(p)?'Vendido':'Ya no está'}</span>`:''}</div>
     <div class="d-body">
       <h1>${esc(p.title)}</h1>
-      <div class="d-free">GRATIS · ${esc(p.cat)}</div>
+      ${isMarket(p) ? priceLabel(p,true) + `<div class="d-meta" style="font-weight:600">${p.kind==='sale'?'En venta':'Para canje'} · ${esc(p.cat)}</div>` : `<div class="d-free">GRATIS · ${esc(p.cat)}</div>`}
       <div class="d-meta">Publicado ${ago(p.t)} en ${esc(p.hood||p.street)}${p.distance_km!=null?' · '+km(p.distance_km):''}</div>
-      <div class="d-actions">
+      ${isMarket(p) ? `<div class="d-actions">
+        ${p.mine ? '' : `<a class="wa ${p.wa&&!p.gone?'':'off'}" id="wa-btn" href="${p.wa?waLink(p):'#'}" target="_blank" rel="noopener">${WA_ICON} ${p.wa?'Escribir por WhatsApp':'Cargando contacto…'}</a>`}
+        ${p.mine ? `<button onclick="doGone('${p.id}', ${!p.gone})">${p.gone?'Volver a publicar':'Marcar como vendido'}</button>` : ''}
+      </div>` : `<div class="d-actions">
         <button class="main" onclick="doInterest('${p.id}')" ${p.gone||going||p.mine?'disabled':''}>${going?'✓ Vas a buscarlo':'🙋 Lo voy a buscar'}</button>
         <button onclick="doGone('${p.id}', ${!p.gone})">${p.gone?'Sigue ahí':'Ya no está'}</button>
       </div>
-      <div class="interest">${p.interest ? `👀 ${p.interest} persona${p.interest>1?'s':''} interesada${p.interest>1?'s':''}` : 'Nadie lo reclamó todavía'}</div>
+      <div class="interest">${p.interest ? `👀 ${p.interest} persona${p.interest>1?'s':''} interesada${p.interest>1?'s':''}` : 'Nadie lo reclamó todavía'}</div>`}
       <div class="d-sec"><h3>Descripción</h3><p>${esc(p.desc)||'<span style="color:var(--muted)">Sin descripción</span>'}</p></div>
+      ${p.kind==='swap' && p.swap_for ? `<div class="d-sec"><h3>Acepta a cambio</h3><p>🔄 ${esc(p.swap_for)}</p></div>` : ''}
       <div class="d-sec"><h3>Ubicación</h3>
         <p>📍 ${esc(where)||'Sin dirección'}</p>
         ${p.gps && window.L ? '<div id="d-map" class="lmap big"></div>' : `<div class="map"><svg viewBox="0 0 400 150" preserveAspectRatio="none">
@@ -667,12 +722,29 @@ function openDetail(id, fresh){
           <path d="M200 50c-10 0-17 7-17 16 0 13 17 30 17 30s17-17 17-30c0-9-7-16-17-16z" fill="#1877F2"/><circle cx="200" cy="66" r="6" fill="#fff"/></svg></div>`}
         <p style="margin-top:10px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQ)}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600;text-decoration:none">Cómo llegar en Google Maps →</a></p>
       </div>
-      <div class="d-sec"><div class="user"><div class="avatar">${esc((p.mine?(NAME||'V'):(p.user||'A'))[0].toUpperCase())}</div><div><b>${p.mine?'Vos':esc(p.user)}</b>${rankTag(p.author_effective)}<div class="d-meta">Avisó este hallazgo${p.author_effective?` · ${p.author_effective} publicaci${p.author_effective===1?'ón efectiva':'ones efectivas'}`:''}</div></div></div></div>
+      <div class="d-sec"><div class="user"><div class="avatar">${esc((p.mine?(NAME||'V'):(p.user||'A'))[0].toUpperCase())}</div><div><b>${p.mine?'Vos':esc(p.user)}</b>${rankTag(p.author_effective)}<div class="d-meta">${isMarket(p)?'Publicó':'Avisó este hallazgo'}${p.author_effective?` · ${p.author_effective} publicaci${p.author_effective===1?'ón efectiva':'ones efectivas'}`:''}</div></div></div></div>
       <div class="link-row">${p.mine ? `<button class="danger" onclick="doRemove('${p.id}')">Borrar publicación</button>` : `<button onclick="doReport('${p.id}')">⚑ Denunciar</button>`}</div>
     </div>`;
   if(!fresh) $('detail').scrollTop = 0;
   $('detail').classList.add('open');
   if(p.gps && $('d-map')) setTimeout(()=>{ if($('d-map') && !detailMap) detailMap = makeMap($('d-map'), p.gps, false); }, 280);
+  if(isMarket(p) && !p.mine && !p.wa && mode==='online') loadContact(p.id);
+}
+const WA_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3z"/></svg>';
+function waLink(p){
+  const msg = `Hola! Vi tu publicación "${p.title}"${p.kind==='sale'&&p.price?` (${money(p.price)})`:''} en Rescatá. ¿Sigue disponible?`;
+  return `https://wa.me/${p.wa}?text=${encodeURIComponent(msg)}`;
+}
+async function loadContact(id){
+  try{
+    const full = (await api('/api/posts/'+encodeURIComponent(id))).post;
+    patch(full);
+    const b = $('wa-btn');
+    if(b && $('detail').classList.contains('open')){
+      if(full.wa){ b.href = waLink(full); b.classList.toggle('off', !!full.gone); b.innerHTML = `${WA_ICON} Escribir por WhatsApp`; }
+      else b.textContent = 'Sin contacto';
+    }
+  }catch(e){ const b=$('wa-btn'); if(b) b.textContent='No se pudo cargar el contacto'; }
 }
 function closeDetail(){ $('detail').classList.remove('open'); }
 function patch(p){ const i=posts.findIndex(x=>x.id===p.id); if(i>=0) posts[i]={...posts[i],...p}; else posts.unshift(p); }
@@ -729,14 +801,50 @@ async function useGPS(){
     st.innerHTML=`<p class="hint" style="margin:0 0 10px;color:var(--red)">${gpsError(e)}</p>`; $('f-street').focus();
   }
 }
+let pubKind = 'free';
+function setKind(k){
+  pubKind = k;
+  document.querySelectorAll('#kind-seg button').forEach(b=>b.classList.toggle('on', b.dataset.k===k));
+  const market = k!=='free';
+  $('market-fields').style.display = market ? 'block' : 'none';
+  $('price-box').style.display = k==='sale' ? 'block' : 'none';
+  $('swap-box').style.display = k==='swap' ? 'block' : 'none';
+  $('swap-box').querySelector('label').style.marginTop = k==='swap' ? '0' : '12px';
+  $('f-title-lbl').textContent = k==='sale' ? '¿Qué vendés?' : k==='swap' ? '¿Qué canjeás?' : '¿Qué encontraste?';
+  $('f-title').placeholder = k==='free' ? 'Ej: Silla de madera, mesa de luz…' : 'Ej: Bici rodado 26, campera talle M…';
+  $('pub-h').textContent = k==='sale' ? 'Publicar una venta' : k==='swap' ? 'Publicar un canje' : 'Avisar un hallazgo';
+  if(market && !$('f-wa').value) $('f-wa').value = ls.get('rescata_wa', '');
+  check();
+}
+function fmtPrice(el){ const d = el.value.replace(/\D/g,'').slice(0,11); el.value = d ? Number(d).toLocaleString('es-AR') : ''; }
+// Misma regla que el servidor: Argentina 549 + área + número
+function normWA(raw){
+  const txt=String(raw||'').trim(); let d=txt.replace(/\D/g,''); if(!d) return null;
+  if(d.startsWith('00')) d=d.slice(2);
+  const intl = txt.startsWith('+')||txt.startsWith('00');
+  if(intl && !d.startsWith('54')) return d.length>=8&&d.length<=15 ? d : null;
+  if(d.startsWith('54')) d=d.slice(2);
+  if(d.startsWith('9')&&d.length===11) d=d.slice(1);
+  if(d.startsWith('0')) d=d.slice(1);
+  if(d.length===12) for(const a of [2,3,4]) if(d.slice(a,a+2)==='15'){ d=d.slice(0,a)+d.slice(a+2); break; }
+  return d.length===10 ? '549'+d : null;
+}
 let starsPrev = [false,false,false];
 function qualityParts(){
   const dlen = $('f-desc').value.trim().length;
   return { photo: !!photo, desc: dlen >= MIN_DESC, loc: !!(gps || $('f-street').value.trim() || $('f-hood').value.trim()), dlen };
 }
 function check(){
-  const ok = photo && $('f-title').value.trim() && (gps || $('f-street').value.trim() || $('f-hood').value.trim());
+  let ok = photo && $('f-title').value.trim() && (gps || $('f-street').value.trim() || $('f-hood').value.trim());
+  if(pubKind!=='free'){
+    const waOk = !!normWA($('f-wa').value), priceOk = pubKind!=='sale' || Number($('f-price').value.replace(/\D/g,''))>0;
+    ok = ok && waOk && priceOk;
+    const w=$('f-wa').value.trim();
+    $('wa-hint').style.color = w && !waOk ? 'var(--red)' : '';
+    $('wa-hint').textContent = w && !waOk ? 'Ese número no parece válido. Ej: 11 2345-6789 o 351 456-7890' : 'Con código de área, sin 0 ni 15. Se muestra solo como botón "Escribir por WhatsApp".';
+  }
   $('pub-btn').disabled = !ok || busy; $('pub-top').disabled = !ok || busy;
+  $('quality').style.display = pubKind==='free' ? 'flex' : 'none';
   const q = qualityParts(), st = [q.photo, q.desc, q.loc];
   let gained = false;
   st.forEach((on,i)=>{ const el=$('qs'+i); el.classList.toggle('on', on);
@@ -753,11 +861,20 @@ function publish(){ if(!$('pub-btn').disabled) needName(doPublish); }
 async function doPublish(){
   busy=true; check(); $('pub-btn').innerHTML='<span class="spin"></span>Publicando…';
   try{
-    const p = await store().create({ title:$('f-title').value.trim(), desc:$('f-desc').value.trim(), cat:selCat,
+    const kind = pubKind;
+    const extra = kind==='free' ? {} : { wa:$('f-wa').value.trim(), price: kind==='sale' ? Number($('f-price').value.replace(/\D/g,'')) : null, swap_for: kind==='swap' ? $('f-swap').value.trim() : '' };
+    const p = await store().create({ kind, ...extra, title:$('f-title').value.trim(), desc:$('f-desc').value.trim(), cat:selCat,
       street:$('f-street').value.trim(), hood:$('f-hood').value.trim(), lat:gps?gps.lat:null, lng:gps?gps.lng:null, image:photo });
-    const wasEffective = qualityParts(); const effective = wasEffective.photo && wasEffective.desc && wasEffective.loc;
+    if(kind!=='free') ls.set('rescata_wa', extra.wa);
+    const wasEffective = qualityParts(); const effective = kind==='free' && wasEffective.photo && wasEffective.desc && wasEffective.loc;
+    if(kind!=='free'){
+      posts.unshift(p); resetForm(); filter='Todo'; renderChips(); go('feed'); setSection('market');
+      celebrate(`<div class="cel-medal">${kind==='sale'?'💲':'🔄'}</div><h3>¡Publicado en ${kind==='sale'?'Ventas':'Canjes'}!</h3>
+        <p>Los interesados te van a escribir directo a tu WhatsApp.${mode==='online'?' Ya le avisamos a la gente.':''}</p><p style="margin-top:8px;font-size:12.5px">Las ventas y canjes no suman para tu rango: eso queda para los hallazgos gratis 🌱</p>`, 'publish');
+      return;
+    }
     const before = myStats ? myStats.effective : null;
-    posts.unshift(p); resetForm(); filter='Todo'; renderChips(); go('feed');
+    posts.unshift(p); resetForm(); filter='Todo'; renderChips(); go('feed'); setSection('free');
     const after = (before||0) + (effective?1:0);
     celebratePublish(effective, before==null?0:before, after);
     if(myStats) myStats.effective = after;
@@ -767,7 +884,7 @@ async function doPublish(){
 }
 function resetForm(){
   photo=null; gps=null; selCat='Muebles';
-  ['f-title','f-desc','f-street','f-hood'].forEach(i=>$(i).value='');
+  ['f-title','f-desc','f-street','f-hood','f-price','f-swap'].forEach(i=>$(i).value='');
   $('cnt').textContent='0/300'; $('loc-status').innerHTML=''; setPhotoBox(); check();
   if(pubMap){ pubMap.remove(); pubMap=null; } $('pub-map').style.display='none';
   if($('addr-status')) $('addr-status').remove(); geoSeq++;
@@ -884,7 +1001,7 @@ async function loadNotifs(){
       notif.interests.filter(x=>x.t>lastPollAt).forEach(x=>showPop({ key:`i-${x.post_id}-${x.who}`, kind:'interest',
         title:`🙋 ${x.who} va a buscar tu ${x.title}`, body:'Tocá para ver la publicación', img:x.img, postId:x.post_id }));
       notif.nearby.filter(p=>p.t>lastPollAt).forEach(p=>showPop({ key:'post-'+p.id, kind:'post',
-        title:`📍 Nuevo${(p.hood||p.street)?' · '+(p.hood||p.street):''}`, body:p.title+(p.desc?' — '+p.desc.slice(0,80):''), img:p.img, postId:p.id }));
+        title:`${p.kind==='sale'?'💲 En venta':p.kind==='swap'?'🔄 Para canje':'📍 Nuevo'}${(p.hood||p.street)?' · '+(p.hood||p.street):''}`, body:p.title+(p.kind==='sale'&&p.price?' — '+money(p.price):'')+(p.desc?' — '+p.desc.slice(0,80):''), img:p.img, postId:p.id }));
     }
     lastPollAt = notif.now || Date.now();
   }catch(e){}

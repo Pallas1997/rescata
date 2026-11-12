@@ -14,7 +14,26 @@ const REPORTS_TO_HIDE = 3;               // denuncias para ocultar una publicaci
 // Publicación "efectiva" (cuenta para el rango): no ocultada por denuncias y con descripción de 20+ caracteres.
 // La foto y la ubicación ya son obligatorias para publicar.
 const MIN_DESC_EFFECTIVE = 20;
-const EFFECTIVE_SQL = `NOT q.hidden AND char_length(q.description) >= ${MIN_DESC_EFFECTIVE}`;
+// Solo los hallazgos gratis suman para el rango (las ventas no).
+const EFFECTIVE_SQL = `NOT q.hidden AND q.kind = 'free' AND char_length(q.description) >= ${MIN_DESC_EFFECTIVE}`;
+const KINDS = ['free', 'sale', 'swap'];
+
+// Normaliza un número de WhatsApp. Argentina: 549 + área + número (sin 0 ni 15).
+function normalizeWhatsApp(raw) {
+  const txt = String(raw || '').trim();
+  let d = txt.replace(/\D/g, '');
+  if (!d) return null;
+  if (d.startsWith('00')) d = d.slice(2);
+  const intl = txt.startsWith('+') || txt.startsWith('00');
+  if (intl && !d.startsWith('54')) return d.length >= 8 && d.length <= 15 ? d : null;   // otro país
+  if (d.startsWith('54')) d = d.slice(2);
+  if (d.startsWith('9') && d.length === 11) d = d.slice(1);
+  if (d.startsWith('0')) d = d.slice(1);
+  if (d.length === 12) {                       // trae el 15 después del código de área
+    for (const a of [2, 3, 4]) if (d.slice(a, a + 2) === '15') { d = d.slice(0, a) + d.slice(a + 2); break; }
+  }
+  return d.length === 10 ? '549' + d : null;
+}
 const CATEGORIES = ['Muebles', 'Electrónica', 'Deco', 'Ropa', 'Libros', 'Plantas', 'Bicis', 'Otros'];
 
 if (!process.env.DATABASE_URL) {
@@ -122,6 +141,9 @@ function shape(row, base) {
     going: !!row.going,
     distance_km: row.distance_km == null ? null : Math.round(row.distance_km * 10) / 10,
     author_effective: row.author_effective || 0,
+    kind: row.kind || 'free',
+    price: row.price == null ? null : Number(row.price),
+    swap_for: row.swap_for || '',
     t: new Date(row.created_at).getTime(),
   };
 }
@@ -129,7 +151,7 @@ function shape(row, base) {
 // Columnas comunes (sin la foto, para que el listado sea liviano)
 const COLS = `
   p.id, p.title, p.description, p.category, p.street, p.hood, p.lat, p.lng,
-  p.author_name, p.interest_count, p.gone, p.created_at,
+  p.author_name, p.interest_count, p.gone, p.created_at, p.kind, p.price, p.swap_for,
   (p.author_id = $1) AS mine,
   EXISTS (SELECT 1 FROM interests i WHERE i.post_id = p.id AND i.device_id = $1) AS going,
   (SELECT count(*) FROM posts q WHERE q.author_id = p.author_id AND ${EFFECTIVE_SQL})::int AS author_effective`;
@@ -173,11 +195,14 @@ async function listPosts(req, res, url) {
 async function getPost(req, res, id) {
   const dev = deviceOf(req);
   const { rows } = await pool.query(
-    `SELECT ${COLS}, NULL::float8 AS distance_km FROM posts p WHERE p.id = $2 AND NOT p.hidden`,
+    `SELECT ${COLS}, p.wa_phone, NULL::float8 AS distance_km FROM posts p WHERE p.id = $2 AND NOT p.hidden`,
     [dev.id, id]
   );
   if (!rows.length) throw new HttpError(404, 'La publicación no existe.');
-  send(req, res, 200, { post: shape(rows[0], publicBase(req)) });
+  const post = shape(rows[0], publicBase(req));
+  // El WhatsApp solo viaja en el detalle de una venta/canje, nunca en el listado
+  if (post.kind !== 'free' && rows[0].wa_phone) post.wa = rows[0].wa_phone;
+  send(req, res, 200, { post });
 }
 
 async function getImage(req, res, id) {
@@ -203,16 +228,27 @@ async function createPost(req, res) {
   const hasGps = lat != null && lng != null && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
   if (!street && !hood && !hasGps) throw new HttpError(400, 'Indicá dónde está (calle, barrio o GPS).');
   const img = parseImage(body.image);
+  const kind = KINDS.includes(body.kind) ? body.kind : 'free';
+  let price = null, wa = '', swapFor = '';
+  if (kind !== 'free') {
+    wa = normalizeWhatsApp(body.wa);
+    if (!wa) throw new HttpError(400, 'Poné un WhatsApp válido (ej: 11 2345-6789).');
+    if (kind === 'sale') {
+      price = Math.round(Number(String(body.price ?? '').replace(/[^\d]/g, '')));
+      if (!Number.isFinite(price) || price <= 0 || price > 1e11) throw new HttpError(400, 'Poné un precio válido.');
+    }
+    swapFor = str(body.swap_for, 120);
+  }
   rateLimit(`dev:${dev.id}`);
   rateLimit(`ip:${ip}`, 40);
 
   const { rows } = await pool.query(
-    `INSERT INTO posts (title, description, category, street, hood, lat, lng, image, image_type, author_id, author_name)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    `INSERT INTO posts (title, description, category, street, hood, lat, lng, image, image_type, author_id, author_name, kind, price, swap_for, wa_phone)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING id`,
     [title, str(body.desc, 300), CATEGORIES.includes(body.cat) ? body.cat : 'Otros',
      street || (hasGps ? 'Ubicación por GPS' : ''), hood,
-     hasGps ? lat : null, hasGps ? lng : null, img.buf, img.type, dev.id, dev.name]
+     hasGps ? lat : null, hasGps ? lng : null, img.buf, img.type, dev.id, dev.name, kind, price, swapFor, wa]
   );
   await getPost(req, res, rows[0].id);
   // Notificación a todos, sin hacer esperar a quien publica
@@ -428,8 +464,8 @@ async function notifyNewPost(post, authorId) {
   const where = post.hood || post.street;
   const payload = JSON.stringify({
     type: 'post', post_id: post.id,
-    title: `📍 Nuevo en Rescatá${where ? ' · ' + where : ''}`,
-    body: `${post.title}${post.desc ? ' — ' + post.desc.slice(0, 80) : ''}`,
+    title: `${post.kind === 'sale' ? '💲 En venta' : post.kind === 'swap' ? '🔄 Para canje' : '📍 Nuevo en Rescatá'}${where ? ' · ' + where : ''}`,
+    body: `${post.title}${post.kind === 'sale' && post.price ? ' — $' + post.price.toLocaleString('es-AR') : ''}${post.desc ? ' — ' + post.desc.slice(0, 80) : ''}`,
     url: `?p=${post.id}`,
     image: post.img,
     tag: `post-${post.id}`,
@@ -545,4 +581,4 @@ if (require.main === module) {
   start().catch(e => { console.error('No pude arrancar:', e); process.exit(1); });
 }
 
-module.exports = { server, pool, start, formatAddress };
+module.exports = { server, pool, start, formatAddress, normalizeWhatsApp };
